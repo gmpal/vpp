@@ -7,12 +7,15 @@ from pvlib.pvsystem import PVSystem
 from pvlib.modelchain import ModelChain as PVModelChain
 from pvlib.location import Location
 
+# TODO: change saving folder structure
+
 
 def generate_weather_data(
     starting_date: str = "2025-01-07 00:00",
     num_days: int = 7,
     freq: str = "h",
     output_path: str = "../data/",
+    source_id: int = 1,
 ) -> pd.DataFrame:
     """
     Generate synthetic weather data for a specified number of days starting from a given date.
@@ -21,6 +24,7 @@ def generate_weather_data(
     num_days (int): The number of days for which to generate weather data.
     freq (str): The frequency of the data points (e.g., 'h' for hourly).
     output_path (str): The file path to save the generated weather data as a CSV file. If None, the data will not be saved.
+    source_id (int): An integer to set the random seed for reproducibility.
     Returns:
     pd.DataFrame: A DataFrame containing the generated weather data with the following columns:
         - 'ghi': Global Horizontal Irradiance (W/m²)
@@ -30,6 +34,9 @@ def generate_weather_data(
         - ('temperature', 2): Temperature at 2m above ground level (°C)
         - ('pressure', 0): Atmospheric pressure at sea level (Pa)
     """
+
+    # Set random seed for reproducibility
+    np.random.seed(source_id)
 
     # Set the time index for one day (24 hourly intervals)
     time_index = pd.date_range(starting_date, periods=24 * num_days, freq=freq)
@@ -94,7 +101,7 @@ def generate_weather_data(
     )
 
     if output_path:
-        weather_data.to_csv(output_path + "weather_data.csv")
+        weather_data.to_csv(output_path + f"{source_id}_weather_data.csv")
 
     return weather_data
 
@@ -104,6 +111,7 @@ def generate_wind_data(
     weather_data: pd.DataFrame = None,
     output_path: str = "../data/",
     plot: bool = False,
+    source_id: int = 1,
 ) -> pd.DataFrame:
     """
     Simulates wind turbine power output based on weather data and a predefined power curve.
@@ -139,24 +147,24 @@ def generate_wind_data(
                 25,
             ],  # Wind speeds (m/s)
             "value": [
-                0,
-                0,
-                10,
-                50,
-                100,
-                300,
-                700,
-                1200,
-                2000,
-                2500,
-                3000,
-                3050,
-                3050,
-                3050,
-                3050,
-                3050,
-                2500,
-                0,
+                0.0,
+                0.0,
+                0.010,
+                0.050,
+                0.100,
+                0.300,
+                0.700,
+                1.200,
+                2.000,
+                2.500,
+                3.000,
+                3.050,
+                3.050,
+                3.050,
+                3.050,
+                3.050,
+                2.500,
+                0.0,
             ],  # Power output (kW)
         }
     )
@@ -190,7 +198,7 @@ def generate_wind_data(
     power_output = modelchain.power_output  # Power output in kW
 
     if output_path:
-        power_output.to_csv(output_path + "wind_turbine_power_output.csv")
+        power_output.to_csv(output_path + f"{source_id}_wind_turbine_power_output.csv")
 
     if plot:
         power_output.plot(
@@ -207,6 +215,7 @@ def generate_pv_data(
     weather_data: pd.DataFrame = None,
     output_path: str = "../data/",
     plot: bool = False,
+    source_id: int = 1,
 ) -> pd.DataFrame:
     """
     Generate photovoltaic (PV) data based on weather data and simulate solar power generation.
@@ -276,7 +285,9 @@ def generate_pv_data(
     ac_power = mc.results.ac
 
     if output_path:
-        ac_power.to_csv(output_path + "solar_panel_generation.csv", header=True)
+        ac_power.to_csv(
+            output_path + f"{source_id}_solar_panel_generation.csv", header=True
+        )
 
     # Plot the results
     if plot:
@@ -315,13 +326,13 @@ def generate_synthetic_load_data(
 
         if 0 <= hour_of_day < 6:
             # Nighttime: relatively low load
-            load_kW[i] = 0.4 + 0.2 * np.random.rand()  # ~0.4 kW ± noise
+            load_kW[i] = 0.4 * 10 + 0.2 * np.random.rand()  # ~0.4 kW ± noise
         elif 6 <= hour_of_day < 17:
             # Daytime: moderate load
-            load_kW[i] = 0.8 + 0.3 * np.random.rand()  # ~0.8 kW ± noise
+            load_kW[i] = 0.8 * 10 + 0.3 * np.random.rand()  # ~0.8 kW ± noise
         else:
             # Evening peak: higher load
-            load_kW[i] = 1.5 + 0.5 * np.random.rand()  # ~1.5 kW ± noise
+            load_kW[i] = 1.5 * 10 + 0.5 * np.random.rand()  # ~1.5 kW ± noise
 
     # Create a pandas Series
     load_series = pd.Series(load_kW, index=time_index, name="Load_kW")
@@ -329,3 +340,55 @@ def generate_synthetic_load_data(
     if output_path:
         load_series.to_csv(output_path + "synthetic_load_data.csv", header=True)
     return load_series
+
+
+def generate_synthetic_market_price(
+    starting_date: str = "2025-01-07 00:00",
+    num_days: int = 7,
+    freq: str = "h",
+    output_path: str = "../data/",
+) -> pd.Series:
+    """
+    Generate synthetic market price data for a specified number of days.
+
+    Parameters:
+    starting_date (str): The starting date and time for the data generation in the format "YYYY-MM-DD HH:MM".
+    num_days (int): The number of days for which to generate the market price data.
+    freq (str): The frequency of the data points (e.g., 'h' for hourly).
+    output_path (str): The file path where the generated data will be saved as a CSV file.
+                       If empty or None, the data will not be saved.
+
+    Returns:
+    pd.Series: A Series containing the generated market price data with a datetime index.
+    """
+    hours = 24 * num_days
+    # Create an hourly date range
+    time_index = pd.date_range(start=starting_date, freq=freq, periods=hours)
+
+    # Initialize an array to hold market price values
+    prices = np.zeros(hours)
+
+    # Base price and variability parameters
+    base_price = 50  # $/MWh base
+    amplitude = 20  # amplitude for sinusoidal fluctuation
+    noise_level = 5  # noise level in price
+
+    for i in range(hours):
+        hour_of_day = time_index[i].hour
+
+        # Use a sinusoidal pattern to simulate diurnal price variations
+        # Higher prices during peak hours (assumed 17:00-21:00) and lower during off-peak.
+        # Additionally add some random noise.
+        # Normalize hour_of_day to range [0, 2π] for one full cycle
+        angle = (hour_of_day / 24) * 2 * np.pi
+        diurnal_variation = amplitude * np.sin(angle)
+
+        # Adjust base price with diurnal variation and noise
+        prices[i] = base_price + diurnal_variation + noise_level * np.random.randn()
+
+    # Create a pandas Series
+    price_series = pd.Series(prices, index=time_index, name="MarketPrice")
+
+    if output_path:
+        price_series.to_csv(output_path + "synthetic_market_price.csv", header=True)
+    return price_series

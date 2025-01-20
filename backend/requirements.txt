@@ -17,3 +17,8 @@ prophet
 kafka-python
 prometheus_client
 psycopg2
+pulp
+prophet
+fastapi 
+uvicorn 
+psycopg2-binary
