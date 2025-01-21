@@ -14,6 +14,7 @@ def forecast_with_prophet(time_series_df, forecast_steps=24, freq="h"):
     time_series_df: DataFrame with datetime index and one value column.
     forecast_steps: Number of time steps to forecast.
     freq: Frequency string (e.g., 'H' for hourly).
+
     """
     # Reset index and rename columns for Prophet
     df = time_series_df.reset_index()
@@ -21,7 +22,6 @@ def forecast_with_prophet(time_series_df, forecast_steps=24, freq="h"):
 
     # ValueError: Column ds has timezone specified, which is not supported. Remove timezone.
     df["ds"] = df["ds"].dt.tz_localize(None)
-
     # Initialize and fit Prophet model
     model = Prophet()
     model.fit(df)
@@ -31,11 +31,11 @@ def forecast_with_prophet(time_series_df, forecast_steps=24, freq="h"):
 
     # Forecast future values
     forecast = model.predict(future)
+    # filter out last forecast_steps
+    return forecast.tail(forecast_steps)
 
-    return forecast
 
-
-def forecast_and_save(forecast_steps: int = 24, frequency: str = "h"):
+def forecast_and_save(forecast_steps: int = 24, frequency: str = "S"):
     """
     Data Format:
     data_from_db = {"renewables": {renewable1: {source_id_1: pd.Series, source_id_1: pd.Series,...}, renewable2: {}, ... }, "load": pd.Series, "market_price": pd.Series}
@@ -58,7 +58,6 @@ def forecast_and_save(forecast_steps: int = 24, frequency: str = "h"):
         else:  # forecast wind and solar
             forecasted[key] = forecast_with_prophet(value, forecast_steps, frequency)
 
-    # moves responsibilities back to db.py
     save_forecasts_to_db(forecasted)
 
 

@@ -210,6 +210,119 @@ def reset_tables():
     conn.close()
 
 
+def reset_forecast_tables():
+    """
+    Resets only the forecast tables for each renewable energy source,
+    as well as for load and market. It leaves existing (non-forecast)
+    tables untouched.
+
+    The tables dropped and recreated here are:
+    - {renewable}_forecast  (for each renewable in RENEWABLES)
+    - load_forecast
+    - market_forecast
+
+    Each forecast table is recreated with columns corresponding to
+    Prophet output (time, trend, yhat, confidence intervals, etc.),
+    and converted into a hypertable using TimescaleDB.
+
+    Note:
+    - The function assumes that the `_connect()` function and the
+      `RENEWABLES` list are defined elsewhere in the code.
+    - Any exceptions raised by the database connection or cursor
+      execution will propagate up to the caller.
+    """
+
+    conn = _connect()
+    cursor = conn.cursor()
+
+    queries = []
+
+    # Recreate forecast tables for each renewable
+    for renewable in RENEWABLES:
+        renewable_forecast_query = f"""
+        DROP TABLE IF EXISTS {renewable}_forecast;
+        CREATE TABLE {renewable}_forecast (
+            time        TIMESTAMPTZ NOT NULL,
+            source_id   VARCHAR(50),
+            trend       DOUBLE PRECISION,
+            yhat_lower  DOUBLE PRECISION,
+            yhat_upper  DOUBLE PRECISION,
+            trend_lower DOUBLE PRECISION,
+            trend_upper DOUBLE PRECISION,
+            additive_terms DOUBLE PRECISION,
+            additive_terms_lower DOUBLE PRECISION,
+            additive_terms_upper DOUBLE PRECISION,
+            daily DOUBLE PRECISION,
+            daily_lower DOUBLE PRECISION,
+            daily_upper DOUBLE PRECISION,
+            multiplicative_terms DOUBLE PRECISION,
+            multiplicative_terms_lower DOUBLE PRECISION,
+            multiplicative_terms_upper DOUBLE PRECISION,
+            yhat DOUBLE PRECISION
+        );
+        SELECT create_hypertable('{renewable}_forecast', 'time');
+        """
+        queries.append(renewable_forecast_query)
+
+    # Recreate forecast table for load
+    load_forecast_query = """
+    DROP TABLE IF EXISTS load_forecast;
+    CREATE TABLE load_forecast (
+        time        TIMESTAMPTZ NOT NULL,
+        trend       DOUBLE PRECISION,
+        yhat_lower  DOUBLE PRECISION,
+        yhat_upper  DOUBLE PRECISION,
+        trend_lower DOUBLE PRECISION,
+        trend_upper DOUBLE PRECISION,
+        additive_terms DOUBLE PRECISION,
+        additive_terms_lower DOUBLE PRECISION,
+        additive_terms_upper DOUBLE PRECISION,
+        daily DOUBLE PRECISION,
+        daily_lower DOUBLE PRECISION,
+        daily_upper DOUBLE PRECISION,
+        multiplicative_terms DOUBLE PRECISION,
+        multiplicative_terms_lower DOUBLE PRECISION,
+        multiplicative_terms_upper DOUBLE PRECISION,
+        yhat DOUBLE PRECISION
+    );
+    SELECT create_hypertable('load_forecast', 'time');
+    """
+    queries.append(load_forecast_query)
+
+    # Recreate forecast table for market
+    market_forecast_query = """
+    DROP TABLE IF EXISTS market_forecast;
+    CREATE TABLE market_forecast (
+        time        TIMESTAMPTZ NOT NULL,
+        trend       DOUBLE PRECISION,
+        yhat_lower  DOUBLE PRECISION,
+        yhat_upper  DOUBLE PRECISION,
+        trend_lower DOUBLE PRECISION,
+        trend_upper DOUBLE PRECISION,
+        additive_terms DOUBLE PRECISION,
+        additive_terms_lower DOUBLE PRECISION,
+        additive_terms_upper DOUBLE PRECISION,
+        daily DOUBLE PRECISION,
+        daily_lower DOUBLE PRECISION,
+        daily_upper DOUBLE PRECISION,
+        multiplicative_terms DOUBLE PRECISION,
+        multiplicative_terms_lower DOUBLE PRECISION,
+        multiplicative_terms_upper DOUBLE PRECISION,
+        yhat DOUBLE PRECISION
+    );
+    SELECT create_hypertable('market_forecast', 'time');
+    """
+    queries.append(market_forecast_query)
+
+    # Execute each drop/create in turn
+    for query in queries:
+        cursor.execute(query)
+        conn.commit()
+
+    cursor.close()
+    conn.close()
+
+
 def load_from_db():
     """
     TODO: allow flexible loading of data from the database (time filtering)
@@ -345,6 +458,12 @@ def save_forecasts_to_db(forecasted):
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s)
             """
 
+            if "daily" not in df.columns:
+                # TODO: handle this better
+                df["daily"] = 0
+                df["daily_lower"] = 0
+                df["daily_upper"] = 0
+
             for time, row in df.iterrows():
                 cursor.execute(
                     query,
@@ -381,6 +500,13 @@ def save_forecasts_to_db(forecasted):
     INSERT INTO {table_name} (time, trend, yhat_lower, yhat_upper, trend_lower, trend_upper, additive_terms,additive_terms_lower, additive_terms_upper, daily, daily_lower, daily_upper, multiplicative_terms, multiplicative_terms_lower, multiplicative_terms_upper, yhat)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s)
     """
+
+    if "daily" not in df.columns:
+        # TODO: handle this better
+        df["daily"] = 0
+        df["daily_lower"] = 0
+        df["daily_upper"] = 0
+
     for _, row in df.iterrows():
         cursor.execute(
             query,

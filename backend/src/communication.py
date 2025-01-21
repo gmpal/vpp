@@ -74,12 +74,13 @@ def make_producers_info(root: str = "../data/"):
     return producers_info
 
 
-def kafka_produce(producer_info: tuple):
+def kafka_produce(producer_info: tuple, sleeping_time: int = 60):
     """
     Produces messages to a Kafka topic.
     Args:
         producer_info (tuple): A tuple containing the topic name (str), source ID (str),
                                and a DataFrame (pandas.DataFrame) with the data to be sent.
+        sleeping_time (int): The time to sleep between sending messages. Defaults to 60. Units: seconds.
     The DataFrame should have a datetime index and a single column of values. Each row in the
     DataFrame will be sent as a separate message to the specified Kafka topic.
     The function serializes the message as JSON and sends it to the Kafka topic with a delay
@@ -102,7 +103,7 @@ def kafka_produce(producer_info: tuple):
         print(
             f"Message from {source_id} at {row.name} sent to topic {topic} with value {row.values[0]}"
         )
-        time.sleep(1)
+        time.sleep(sleeping_time)
 
 
 def kafka_consume_centralized():

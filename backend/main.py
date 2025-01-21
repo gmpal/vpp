@@ -12,70 +12,85 @@ from src.communication import (
     kafka_consume_centralized,
 )
 
-from src.forecasting import forecast_and_save
-
 import src.db as db
 
 from multiprocessing import Process
 import os
 import random
+import datetime
 
 if __name__ == "__main__":
 
-    starting_date = "2025-01-07 00:00"
-    num_days = 31
+    # now
+    starting_date = datetime.datetime.now()
     output_path = "./data/"
     num_sources = 2
+    freq = "s"
+    num_days = 100  # doesnt matter because minutes * 24
+    sleeping_time = 1
 
-    # # emtpy folder output_path
-    # for file in os.listdir(output_path):
-    #     os.remove(output_path + file)
+    # emtpy folder output_path
+    for file in os.listdir(output_path):
+        os.remove(output_path + file)
 
-    # for source_id in range(1, num_sources + 1):
-    #     # Generate weather data
-    #     weather_data = generate_weather_data(
-    #         starting_date,
-    #         num_days=num_days,
-    #         output_path=output_path,
-    #         source_id=source_id,
-    #     )
+    for source_id in range(1, num_sources + 1):
+        # Generate weather data
+        weather_data = generate_weather_data(
+            starting_date,
+            num_days=num_days,
+            output_path=output_path,
+            source_id=source_id,
+            freq=freq,
+        )
 
-    #     # random boolean selector
-    #     if random.randint(0, 1):
-    #         # Generate wind power output data
-    #         generate_wind_data(
-    #             weather_data=weather_data, output_path=output_path, source_id=source_id
-    #         )
-    #     else:
-    #         generate_pv_data(
-    #             weather_data=weather_data, output_path=output_path, source_id=source_id
-    #         )
+        # random boolean selector
+        if random.randint(0, 1):
+            # Generate wind power output data
+            generate_wind_data(
+                weather_data=weather_data,
+                output_path=output_path,
+                source_id=source_id,
+            )
+        else:
+            generate_pv_data(
+                weather_data=weather_data,
+                output_path=output_path,
+                source_id=source_id,
+            )
 
-    # load_data = generate_synthetic_load_data(
-    #     starting_date, num_days=num_days, output_path=output_path
-    # )
+    load_data = generate_synthetic_load_data(
+        starting_date,
+        num_days=num_days,
+        output_path=output_path,
+        freq=freq,
+    )
 
-    # market_prices = generate_synthetic_market_price(
-    #     starting_date, num_days=num_days, output_path=output_path
-    # )
+    market_prices = generate_synthetic_market_price(
+        starting_date,
+        num_days=num_days,
+        output_path=output_path,
+        freq=freq,
+    )
 
-    # producers_bundles = make_producers_info(output_path)
+    producers_bundles = make_producers_info(output_path)
 
-    # processes = []
-    # for producer_bundle in producers_bundles:
-    #     producer_process = Process(target=kafka_produce, args=(producer_bundle,))
-    #     processes.append(producer_process)
+    processes = []
+    for producer_bundle in producers_bundles:
+        producer_process = Process(
+            target=kafka_produce, args=(producer_bundle, sleeping_time)
+        )
+        processes.append(producer_process)
 
-    # db.reset_tables()
+    db.reset_tables()
 
-    # consumer_process = Process(target=kafka_consume_centralized)
-    # processes.append(consumer_process)
+    consumer_process = Process(target=kafka_consume_centralized)
+    processes.append(consumer_process)
 
-    # # Start all processes
-    # for process in processes:
-    #     process.start()
-    # # Wait for all processes to complete
-    # for producer_process in processes:
-    #     producer_process.join()
+    # Start all processes
+    for process in processes:
+        process.start()
+    # Wait for all processes to complete
+    for producer_process in processes:
+        producer_process.join()
 
-    forecast_and_save()
+    # forecast_and_save()

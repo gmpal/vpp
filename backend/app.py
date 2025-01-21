@@ -2,8 +2,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel
+import random
+import pandas as pd
 
 from src.db import (
     load_from_db,
@@ -13,6 +15,7 @@ from src.db import (
 )
 
 RENEWABLES = ["solar", "wind"]  # scalable for more renewables
+COUNTER = 0
 
 app = FastAPI()
 
@@ -24,6 +27,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class RealTimeDataPoint(BaseModel):
+    timestamp: str
+    value: float
+    # TODO: consider merging with HistoricalDataPoint if they share the same structure
 
 
 class HistoricalDataPoint(BaseModel):
@@ -50,14 +59,66 @@ class ForecastedDataPoint(BaseModel):
     yhat: float
 
 
+class DeviceCounts(BaseModel):
+    solar: int
+    wind: int
+    # TODO: Add other types if needed
+    # How to make this scalable?
+
+
+@app.get("/api/realtime-data/{source}", response_model=List[RealTimeDataPoint])
+def query_real_time_data(
+    source: str, source_id: str = None, since: Optional[str] = None
+):
+    """
+    Fetches real-time data for a given source and optional source_id since a specified time.
+    Args:
+        source (str): The source from which to fetch real-time data.
+        source_id (str, optional): The identifier for the specific source. Defaults to None.
+        since (str, optional): The starting point in time (ISO 8601 format) from which to fetch data. Defaults to None.
+    Returns:
+        List[RealTimeDataPoint]: A list of RealTimeDataPoint objects containing the timestamp and value of the data points.
+    """
+
+    # Parse the 'since' parameter if provided
+    print(
+        f"Fetching real-time data for {source} with source_id {source_id} since {since}"
+    )
+    real_time_data = []
+    if since:
+
+        data = load_historical_data(
+            source, source_id, since, None
+        )  # returns list of dicts/objects
+    else:
+        data = load_historical_data(
+            source, source_id, None, None
+        )  # returns list of dicts/objects
+    for idx, row in data.iterrows():
+        # 'idx' is now the 'time' index
+        # add some some hours to the timestamp
+        real_time_data.append(
+            RealTimeDataPoint(timestamp=idx.isoformat(), value=row["value"])
+        )
+
+    return real_time_data
+
+
 @app.get("/api/forecasted/{source}", response_model=List[ForecastedDataPoint])
-def forecasted_data(
+def query_forecasted_data(
     source: str, source_id: str = None, start: str = None, end: str = None
 ):
     """
-    Fetches historical data for a source.
-    If renewable, provide the source_id.
-    Optionally filter by a start and end time.
+    Queries forecasted data for a given source and optional parameters.
+    Args:
+        source (str): The source of the forecasted data.
+        source_id (str, optional): The ID of the source. Defaults to None.
+        start (str, optional): The start date for the forecasted data in ISO format. Defaults to None.
+        end (str, optional): The end date for the forecasted data in ISO format. Defaults to None.
+    Returns:
+        list: A list of ForecastedDataPoint objects containing the forecasted data.
+    Raises:
+        HTTPException: If there is an error in querying the forecasted data.
     """
     # type of start and end checking
     try:
@@ -96,20 +157,28 @@ def forecasted_data(
 
 
 @app.get("/api/historical/{source}", response_model=List[HistoricalDataPoint])
-def historical_data(
+def query_historical_data(
     source: str, source_id: str = None, start: str = None, end: str = None
 ):
     """
-    Fetches historical data for a source.
-    If renewable, provide the source_id.
-    Optionally filter by a start and end time.
+    Queries historical data from a specified source within a given time range.
+    Args:
+        source (str): The source from which to query historical data.
+        source_id (str, optional): The identifier for the specific source. Defaults to None.
+        start (str, optional): The start time for the query in ISO 8601 format. Defaults to None.
+        end (str, optional): The end time for the query in ISO 8601 format. Defaults to None.
+    Returns:
+        list: A list of HistoricalDataPoint objects containing the timestamp and value.
+    Raises:
+        HTTPException: If an error occurs while querying the historical data.
     """
+
     # type of start and end checking
     try:
         dataframe = load_historical_data(
             source, source_id, start, end
         )  # returns list of dicts/objects
-        print(dataframe)
+
         historical_data = []
         for idx, row in dataframe.iterrows():
             # 'idx' is now the 'time' index
@@ -124,46 +193,30 @@ def historical_data(
 
 
 @app.get("/api/source-ids/{source}", response_model=List[str])
-def get_source_ids(source: str):
+def query_ids(source: str):
+    """
+    Query the database to retrieve available source IDs for the given source type.
+    Args:
+        source (str): The type of source for which to retrieve available IDs.
+    Returns:
+        list: A list of available source IDs for the given source type.
+    """
+
     # Query the database to retrieve available source IDs for the given source type
     # For example:
     available_ids = query_source_ids(source)  # Implement this function
     return available_ids
 
 
-@app.get("/api/realtime-data")
-def realtime_data():
+@app.get("/api/device-status", response_model=DeviceCounts)
+def query_device_counts():
     """
-    Endpoint to fetch real-time data.
-    This function calls load_from_db() to retrieve data from the database,
-    processes it, and returns a JSON object with the latest values.
+    Queries the number of devices for each type and returns a DeviceCounts object.
+    Returns:
+        DeviceCounts: An object containing the counts of solar and wind devices.
     """
-    data = load_from_db()
 
-    latest_data = {}
-    for key, value in data.items():
-        if key == "renewables":
-            for renewable, renewable_dict in value.items():
-                for source_id, source_data in renewable_dict.items():
-                    # Process renewable data
-                    pass
-        else:
-            # Process load and market data
-            pass
-
-    # For example, suppose we take the first renewable source's latest value:
-    if data["renewables"]:
-        # Get the first renewable type and first source within that type
-        first_renewable_type = next(iter(data["renewables"]))
-        sources = data["renewables"][first_renewable_type]
-        if sources:
-            first_source_id = next(iter(sources))
-            # Get the latest value from the series
-            series = sources[first_source_id]
-            if not series.empty:
-                latest_data["generation"] = series.iloc[-1]  # Example usage
-
-    # Similarly, you can extract values for consumption and storageLevel
-    # using data["load"] and data["market"], adapting to your use case.
-    print(latest_data)
-    return latest_data
+    # TODO: Add other types if needed
+    solar = len(query_source_ids("solar"))
+    wind = len(query_source_ids("wind"))
+    return DeviceCounts(solar=solar, wind=wind)

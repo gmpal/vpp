@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { fetchRealTimeData, RealTimeData, fetchSourceIDs } from './api.ts';
-import Chart from './Chart.tsx';
+import { fetchSourceIDs, fetchDeviceCounts, DeviceCounts } from './api.ts';
 import { DateRange } from '@mui/x-date-pickers-pro/DateRangePicker';
 import TimeRangeSelector from './TimeRangeSelector.tsx';
+
 
 import {
     Container,
@@ -16,8 +16,10 @@ import {
     Select,
     MenuItem,
 } from '@mui/material';
+
 import HistoricalDataViewer from './HistoricalDataViewer.tsx';
 import ForecastedDataViewer from './ForecastedDataViewer.tsx';
+import RealTimeDataViewer from './RealTimeDataViewer.tsx';
 
 function safeToISOString(date: any): string | undefined {
     if (!date) return undefined; // Check for null/undefined
@@ -26,45 +28,36 @@ function safeToISOString(date: any): string | undefined {
 }
 
 const Dashboard: React.FC = () => {
-    const [data, setData] = useState<RealTimeData | null>(null);
-    const [dataHistory, setDataHistory] = useState<RealTimeData[]>([]);
-    const [selectedSource, setSelectedSource] = useState<string>('solar');
-    const [selectedSourceID, setSelectedSourceID] = useState<string>('');
-    const [selectedRange, setSelectedRange] = useState<DateRange<Date>>([null, null]);
+    const [selectedSourceHistorical, setSelectedSourceHistorical] = useState<string>('solar');
+    const [selectedSourceIDHistorical, setSelectedSourceIDHistorical] = useState<string>('3');
+    const [selectedRangeHistorical, setSelectedRangeHistorical] = useState<DateRange<Date>>([null, null]);
+
+    const [selectedSourceForecast, setSelectedSourceForecast] = useState<string>('solar');
+    const [selectedSourceIDForecast, setSelectedSourceIDForecast] = useState<string>('3');
+    const [selectedRangeForecast, setSelectedRangeForecast] = useState<DateRange<Date>>([null, null]);
+
+    const [selectedSourceRealTime, setSelectedSourceRealTime] = useState<string>('solar');
+    const [selectedSourceIDRealTime, setSelectedSourceIDRealTime] = useState<string>('3');
+    const [selectedRangeRealTime, setSelectedRangeRealTime] = useState<DateRange<Date>>([null, null]);
+
+
     const [sourceIDs, setSourceIDs] = useState<string[]>([]);
+    const [deviceCounts, setDeviceCounts] = useState<DeviceCounts | null>(null);
 
-    useEffect(() => {
-        const interval = setInterval(async () => {
-            try {
-                const newData = await fetchRealTimeData();
-                setData(newData);
-                setDataHistory(prevHistory => {
-                    // Append newData with a timestamp if needed, or use the data as-is
-                    const updatedHistory = [...prevHistory, newData];
-                    // Limit history to last 50 entries
-                    return updatedHistory.length > 50 ? updatedHistory.slice(-50) : updatedHistory;
-                });
-            } catch (error) {
-                console.error('Error fetching data', error);
-            }
-        }, 5000);
-
-        return () => clearInterval(interval);
-    }, []);
 
     useEffect(() => {
         async function updateSourceIDs() {
-            if (selectedSource === 'market' || selectedSource === 'load') {
+            if (selectedSourceHistorical === 'market' || selectedSourceHistorical === 'load') {
                 setSourceIDs([]);      // Clear IDs since not applicable
-                setSelectedSourceID(''); // Reset source ID
+                setSelectedSourceIDHistorical(''); // Reset source ID
                 return;
             }
             try {
-                const ids = await fetchSourceIDs(selectedSource);
+                const ids = await fetchSourceIDs(selectedSourceHistorical);
                 setSourceIDs(ids);
                 // Optionally reset selectedSourceID if current one is not in new list
-                if (!ids.includes(selectedSourceID)) {
-                    setSelectedSourceID(ids[0] || '');  // select first if available
+                if (!ids.includes(selectedSourceIDHistorical)) {
+                    setSelectedSourceIDHistorical(ids[0] || '');  // select first if available
                 }
             } catch (error) {
                 console.error('Error fetching source IDs:', error);
@@ -72,34 +65,56 @@ const Dashboard: React.FC = () => {
         }
 
         updateSourceIDs();
-    }, [selectedSource]);
+    }, [selectedSourceHistorical, selectedSourceIDHistorical]);
 
-    if (!data) {
-        return (
-            <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
-                <CircularProgress />
-            </Box>
-        );
-    }
+
+    useEffect(() => {
+        async function updateDeviceCounts() {
+            try {
+                const counts = await fetchDeviceCounts();
+                setDeviceCounts(counts);
+            } catch (error) {
+                console.error('Error fetching device counts:', error);
+            }
+        }
+        updateDeviceCounts();
+    }, []);
+
+
+    // if (!realTimeData) {
+    //     return (
+    //         <Box display="flex" justifyContent="center" alignItems="center" minHeight="100vh">
+    //             <CircularProgress />
+    //         </Box>
+    //     );
+    // }
 
     return (
+
         <Container maxWidth="lg" sx={{ py: 4 }}>
-            <Typography variant="h4" component="h1" gutterBottom align="center">
+            <Typography variant="h1" component="h1" gutterBottom align="center">
                 Virtual Power Plant Dashboard
             </Typography>
-            <Grid container spacing={3}>
 
-                {/* Source Selection Menu */}
+            {/* Real-Time Box */}
+            <Box my={4}>
+                {/* Real-Time Title */}
+                <Typography variant="h2" component="h1" gutterBottom align="center">
+                    Real-Time Data Plot
+                </Typography>
+
+
+                {/* Real-Time Data Source Selection Menu */}
                 <Grid item xs={12}>
                     <Paper elevation={3} sx={{ p: 2 }}>
                         <FormControl fullWidth>
-                            <InputLabel id="source-select-label">Select Source</InputLabel>
+                            <InputLabel id="source-select-label">Select Source Real Time</InputLabel>
                             <Select
-                                labelId="source-select-label"
-                                id="source-select"
-                                value={selectedSource}
-                                label="Select Source"
-                                onChange={(e) => setSelectedSource(e.target.value as string)}
+                                labelId="source-real-time-select-label"
+                                id="source-real-time-select"
+                                value={selectedSourceRealTime}
+                                label="Select Realtime Source"
+                                onChange={(e) => setSelectedSourceRealTime(e.target.value as string)}
                             >
                                 <MenuItem value="solar">Solar</MenuItem>
                                 <MenuItem value="wind">Wind</MenuItem>
@@ -110,19 +125,19 @@ const Dashboard: React.FC = () => {
                     </Paper>
                 </Grid>
 
-                {/* Source ID Selection Menu */}
+                {/* Real-Time Source ID Selection Menu */}
                 {
-                    selectedSource !== 'market' && selectedSource !== 'load' && (
+                    selectedSourceRealTime !== 'market' && selectedSourceRealTime !== 'load' && (
                         <Grid item xs={12}>
                             <Paper elevation={3} sx={{ p: 2 }}>
                                 <FormControl fullWidth>
-                                    <InputLabel id="source-id-select-label">Select Source ID</InputLabel>
+                                    <InputLabel id="source-id-realtime-select-label">Select Source ID</InputLabel>
                                     <Select
-                                        labelId="source-id-select-label"
-                                        id="source-id-select"
-                                        value={selectedSourceID}
-                                        label="Select Source ID"
-                                        onChange={(e) => setSelectedSourceID(e.target.value as string)}
+                                        labelId="source-id-realtime-select-label"
+                                        id="source-id-realtime-select"
+                                        value={selectedSourceIDRealTime}
+                                        label="Select Source Real Time ID"
+                                        onChange={(e) => setSelectedSourceIDRealTime(e.target.value as string)}
                                     >
                                         {sourceIDs.map((id) => (
                                             <MenuItem key={id} value={id}>{id}</MenuItem>
@@ -134,10 +149,108 @@ const Dashboard: React.FC = () => {
                     )
                 }
 
-                {/* Time Range Selector */}
+                {/* Real-Time  Time Range Selector */}
                 <Grid item xs={12}>
                     <Paper elevation={3} sx={{ p: 2 }}>
-                        <TimeRangeSelector value={selectedRange} onChange={setSelectedRange} />
+                        <TimeRangeSelector value={selectedRangeRealTime} onChange={setSelectedRangeRealTime} />
+                    </Paper>
+                </Grid>
+
+
+
+                {/* Real-Time Data Viewer Section */}
+                <Grid item xs={12}>
+                    <Paper elevation={3} sx={{ p: 2 }}>
+                        <RealTimeDataViewer
+                            source={selectedSourceRealTime}
+                            sourceId={selectedSourceIDRealTime}
+                            start={safeToISOString(selectedRangeRealTime[0])}
+                            end={safeToISOString(selectedRangeRealTime[1])}
+                        />
+                    </Paper>
+                </Grid>
+            </Box>
+
+            {/* Devices Box */}
+            <Box my={4}>
+                <Typography variant="h2" component="h1" gutterBottom align="center">
+                    Devices
+                </Typography>
+
+                {/* Status Widgets */}
+                <Grid item xs={12} md={6}>
+                    <Paper elevation={3} sx={{ p: 2 }}>
+                        <Typography variant="h6">Solar Devices</Typography>
+                        <Typography variant="h4">
+                            {deviceCounts ? deviceCounts.solar : <CircularProgress size={24} />}
+                        </Typography>
+                    </Paper>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                    <Paper elevation={3} sx={{ p: 2 }}>
+                        <Typography variant="h6">Wind Devices</Typography>
+                        <Typography variant="h4">
+                            {deviceCounts ? deviceCounts.wind : <CircularProgress size={24} />}
+                        </Typography>
+                    </Paper>
+                </Grid>
+
+            </Box>
+
+            {/* Historical Data Box */}
+            <Box my={4}>
+                <Typography variant="h2" component="h1" gutterBottom align="center">
+                    Historical Data
+                </Typography>
+                {/* Historical Data Source Selection Menu */}
+                <Grid item xs={12}>
+                    <Paper elevation={3} sx={{ p: 2 }}>
+                        <FormControl fullWidth>
+                            <InputLabel id="source-select-label">Select Source</InputLabel>
+                            <Select
+                                labelId="source-select-label"
+                                id="source-select"
+                                value={selectedSourceHistorical}
+                                label="Select Source"
+                                onChange={(e) => setSelectedSourceHistorical(e.target.value as string)}
+                            >
+                                <MenuItem value="solar">Solar</MenuItem>
+                                <MenuItem value="wind">Wind</MenuItem>
+                                <MenuItem value="load">Load</MenuItem>
+                                <MenuItem value="market">Market</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Paper>
+                </Grid>
+
+                {/* Historical Data Source ID Selection Menu */}
+                {
+                    selectedSourceHistorical !== 'market' && selectedSourceHistorical !== 'load' && (
+                        <Grid item xs={12}>
+                            <Paper elevation={3} sx={{ p: 2 }}>
+                                <FormControl fullWidth>
+                                    <InputLabel id="source-id-historical-select-label">Select Source ID</InputLabel>
+                                    <Select
+                                        labelId="source-id-historical-select-label"
+                                        id="source-id-historical-select"
+                                        value={selectedSourceIDHistorical}
+                                        label="Select Source ID Historical"
+                                        onChange={(e) => setSelectedSourceIDHistorical(e.target.value as string)}
+                                    >
+                                        {sourceIDs.map((id) => (
+                                            <MenuItem key={id} value={id}>{id}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Paper>
+                        </Grid>
+                    )
+                }
+
+                {/* Historical Data Time Range Selector */}
+                <Grid item xs={12}>
+                    <Paper elevation={3} sx={{ p: 2 }}>
+                        <TimeRangeSelector value={selectedRangeHistorical} onChange={setSelectedRangeHistorical} />
                     </Paper>
                 </Grid>
 
@@ -147,31 +260,33 @@ const Dashboard: React.FC = () => {
                 <Grid item xs={12}>
                     <Paper elevation={3} sx={{ p: 2 }}>
                         <HistoricalDataViewer
-                            source={selectedSource}
-                            sourceId={selectedSourceID}
-                            start={safeToISOString(selectedRange[0])}
-                            end={safeToISOString(selectedRange[1])}
+                            source={selectedSourceHistorical}
+                            sourceId={selectedSourceIDHistorical}
+                            start={safeToISOString(selectedRangeHistorical[0])}
+                            end={safeToISOString(selectedRangeHistorical[1])}
                         />
                     </Paper>
                 </Grid>
-            </Grid >
+            </Box>
 
-            <Typography variant="h4" component="h1" gutterBottom align="center">
-                Forecasting
-            </Typography>
-            <Grid container spacing={3}>
+            {/* Forecasting Box */}
+            <Box my={4}>
+                <Typography variant="h2" component="h1" gutterBottom align="center">
+                    Forecasting
+                </Typography>
 
-                {/* Source Selection Menu */}
+
+                {/* Forecasting Source Selection Menu */}
                 <Grid item xs={12}>
                     <Paper elevation={3} sx={{ p: 2 }}>
                         <FormControl fullWidth>
-                            <InputLabel id="source-select-label">Select Source</InputLabel>
+                            <InputLabel id="source-forecast-select-label">Select Source</InputLabel>
                             <Select
-                                labelId="source-select-label"
-                                id="source-select"
-                                value={selectedSource}
-                                label="Select Source"
-                                onChange={(e) => setSelectedSource(e.target.value as string)}
+                                labelId="source-forecast-select-label"
+                                id="source-forecast-select"
+                                value={selectedSourceHistorical}
+                                label="Select Forecast Source"
+                                onChange={(e) => setSelectedSourceForecast(e.target.value as string)}
                             >
                                 <MenuItem value="solar">Solar</MenuItem>
                                 <MenuItem value="wind">Wind</MenuItem>
@@ -182,19 +297,19 @@ const Dashboard: React.FC = () => {
                     </Paper>
                 </Grid>
 
-                {/* Source ID Selection Menu */}
+                {/* Forecasting Source ID Selection Menu */}
                 {
-                    selectedSource !== 'market' && selectedSource !== 'load' && (
+                    selectedSourceForecast !== 'market' && selectedSourceForecast !== 'load' && (
                         <Grid item xs={12}>
                             <Paper elevation={3} sx={{ p: 2 }}>
                                 <FormControl fullWidth>
-                                    <InputLabel id="source-id-select-label">Select Source ID</InputLabel>
+                                    <InputLabel id="source-id-forecast-select-label">Select Source ID</InputLabel>
                                     <Select
-                                        labelId="source-id-select-label"
-                                        id="source-id-select"
-                                        value={selectedSourceID}
-                                        label="Select Source ID"
-                                        onChange={(e) => setSelectedSourceID(e.target.value as string)}
+                                        labelId="source-id-forecast-select-label"
+                                        id="source-id-forecast-select"
+                                        value={selectedSourceIDForecast}
+                                        label="Select Source ID Forecast"
+                                        onChange={(e) => setSelectedSourceIDForecast(e.target.value as string)}
                                     >
                                         {sourceIDs.map((id) => (
                                             <MenuItem key={id} value={id}>{id}</MenuItem>
@@ -206,27 +321,27 @@ const Dashboard: React.FC = () => {
                     )
                 }
 
-                {/* Time Range Selector */}
+                {/* Forecasting Time Range Selector */}
                 <Grid item xs={12}>
                     <Paper elevation={3} sx={{ p: 2 }}>
-                        <TimeRangeSelector value={selectedRange} onChange={setSelectedRange} />
+                        <TimeRangeSelector value={selectedRangeForecast} onChange={setSelectedRangeForecast} />
                     </Paper>
                 </Grid>
 
 
 
-                {/* Historical Data Viewer Section */}
+                {/* Forecasting Data Viewer Section */}
                 <Grid item xs={12}>
                     <Paper elevation={3} sx={{ p: 2 }}>
                         <ForecastedDataViewer
-                            source={selectedSource}
-                            sourceId={selectedSourceID}
-                            start={safeToISOString(selectedRange[0])}
-                            end={safeToISOString(selectedRange[1])}
+                            source={selectedSourceForecast}
+                            sourceId={selectedSourceIDForecast}
+                            start={safeToISOString(selectedRangeForecast[0])}
+                            end={safeToISOString(selectedRangeForecast[1])}
                         />
                     </Paper>
                 </Grid>
-            </Grid >
+            </Box >
         </Container >
     );
 };

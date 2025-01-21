@@ -2,12 +2,10 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:8000/api';
 
-
-export interface RealTimeData {
-    generation: number;
-    consumption: number;
-    storageLevel: number;
-    // Add other metrics as needed based on your backend response TODO: decide
+export interface RealTimeDataPoint {
+    timestamp: string;
+    value: number;
+    // TODO: consider merging with historical data point
 }
 
 export interface HistoricalDataPoint {
@@ -35,10 +33,31 @@ export interface ForecastedDataPoint {
     yhat: number;
 }
 
-export async function fetchSourceIDs(source: string): Promise<string[]> {
-    const response = await axios.get<string[]>(`${API_BASE_URL}/source-ids/${source}`);
+export interface DeviceCounts {
+    solar: number;
+    wind: number;
+    // Add other fields if necessary
+}
+
+export async function fetchRealTimeData(source: string, source_id?: string, lastFetchedTime?: string | null): Promise<RealTimeDataPoint[]> {
+    let url = `${API_BASE_URL}/realtime-data/${source}`;
+    const params: string[] = [];
+
+    // Only include source_id if source requires it
+    if (source_id && source !== 'market' && source !== 'load') {
+        params.push(`source_id=${encodeURIComponent(source_id)}`);
+    }
+    if (lastFetchedTime) {
+        params.push(`since=${encodeURIComponent(lastFetchedTime)}`);
+    }
+
+    if (params.length) {
+        url += '?' + params.join('&');
+    }
+    const response = await axios.get<RealTimeDataPoint[]>(url);
     return response.data;
 }
+
 
 export async function fetchHistoricalData(source: string, source_id?: string, start?: string, end?: string): Promise<HistoricalDataPoint[]> {
     let url = `${API_BASE_URL}/historical/${source}`;
@@ -58,6 +77,7 @@ export async function fetchHistoricalData(source: string, source_id?: string, st
     return response.data;
 }
 
+
 export async function fetchForecastedData(source: string, source_id?: string, start?: string, end?: string): Promise<ForecastedDataPoint[]> {
     let url = `${API_BASE_URL}/forecasted/${source}`;
     const params: string[] = [];
@@ -76,10 +96,14 @@ export async function fetchForecastedData(source: string, source_id?: string, st
     return response.data;
 }
 
-export async function fetchRealTimeData(): Promise<RealTimeData> {
-    // Update the URL to match your FastAPI endpoint and port #TODO: decide
-    const response = await axios.get<RealTimeData>('http://localhost:8000/api/realtime-data');
-    console.log(response.data);
+
+export async function fetchSourceIDs(source: string): Promise<string[]> {
+    const response = await axios.get<string[]>(`${API_BASE_URL}/source-ids/${source}`);
     return response.data;
 }
 
+
+export async function fetchDeviceCounts(): Promise<DeviceCounts> {
+    const response = await axios.get<DeviceCounts>(`${API_BASE_URL}/device-status`);
+    return response.data;
+}
