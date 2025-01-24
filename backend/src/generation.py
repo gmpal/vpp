@@ -7,7 +7,26 @@ from pvlib.pvsystem import PVSystem
 from pvlib.modelchain import ModelChain as PVModelChain
 from pvlib.location import Location
 
+import configparser
+from datetime import datetime
+
 # TODO: change saving folder structure
+
+
+def read_generation_config(filename: str = "config.ini") -> dict:
+    config = configparser.ConfigParser()
+    config.read(filename)
+
+    config = {
+        "output_path": config.get("Generation", "output_path"),
+        "num_sources": int(config.get("Generation", "num_sources")),
+        "freq": config.get("Generation", "freq"),
+        "num_days": int(config.get("Generation", "num_days")),
+        "sleeping_time": int(config.get("Generation", "sleeping_time")),
+        "starting_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    return config
 
 
 def generate_weather_data(
@@ -15,7 +34,7 @@ def generate_weather_data(
     num_days: int = 7,
     freq: str = "h",
     output_path: str = "../data/",
-    source_id: int = 1,
+    source_id: str = 1,
 ) -> pd.DataFrame:
     """
     Generate synthetic weather data for a specified number of days starting from a given date.
@@ -24,7 +43,7 @@ def generate_weather_data(
     num_days (int): The number of days for which to generate weather data.
     freq (str): The frequency of the data points (e.g., 'h' for hourly).
     output_path (str): The file path to save the generated weather data as a CSV file. If None, the data will not be saved.
-    source_id (int): An integer to set the random seed for reproducibility.
+    source_id (str): The unique identifier for the weather data source.
     Returns:
     pd.DataFrame: A DataFrame containing the generated weather data with the following columns:
         - 'ghi': Global Horizontal Irradiance (W/m²)
@@ -36,7 +55,9 @@ def generate_weather_data(
     """
 
     # Set random seed for reproducibility
-    np.random.seed(source_id)
+    # get an integer from  source_id
+    seed = int("".join([c for c in source_id if c.isdigit()]))
+    np.random.seed(seed)
 
     # Set the time index for one day (24 hourly intervals)
     time_index = pd.date_range(starting_date, periods=24 * num_days, freq=freq)
@@ -111,7 +132,7 @@ def generate_wind_data(
     weather_data: pd.DataFrame = None,
     output_path: str = "../data/",
     plot: bool = False,
-    source_id: int = 1,
+    source_id: str = 1,
 ) -> pd.DataFrame:
     """
     Simulates wind turbine power output based on weather data and a predefined power curve.
@@ -198,7 +219,7 @@ def generate_wind_data(
     power_output = modelchain.power_output  # Power output in kW
 
     if output_path:
-        power_output.to_csv(output_path + f"{source_id}_wind_turbine_power_output.csv")
+        power_output.to_csv(output_path + f"{source_id}_wind.csv")
 
     if plot:
         power_output.plot(
@@ -215,7 +236,7 @@ def generate_pv_data(
     weather_data: pd.DataFrame = None,
     output_path: str = "../data/",
     plot: bool = False,
-    source_id: int = 1,
+    source_id: str = 1,
 ) -> pd.DataFrame:
     """
     Generate photovoltaic (PV) data based on weather data and simulate solar power generation.
@@ -285,9 +306,7 @@ def generate_pv_data(
     ac_power = mc.results.ac
 
     if output_path:
-        ac_power.to_csv(
-            output_path + f"{source_id}_solar_panel_generation.csv", header=True
-        )
+        ac_power.to_csv(output_path + f"{source_id}_solar.csv", header=True)
 
     # Plot the results
     if plot:

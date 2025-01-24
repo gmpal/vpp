@@ -2,9 +2,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
-import random
 import pandas as pd
 
 from src.db import (
@@ -12,7 +11,12 @@ from src.db import (
     load_historical_data,
     query_source_ids,
     load_forecasted_data,
+    save_battery_state,
 )
+from src.battery import Battery  # Adjust import as necessary
+from src.sources import create_new_source
+from src.optimization import optimize
+
 
 RENEWABLES = ["solar", "wind"]  # scalable for more renewables
 COUNTER = 0
@@ -64,6 +68,175 @@ class DeviceCounts(BaseModel):
     wind: int
     # TODO: Add other types if needed
     # How to make this scalable?
+
+
+class Source(BaseModel):
+    source_type: str
+    source_id: str
+
+
+# In-memory store for batteries
+batteries: Dict[str, Battery] = {}
+
+
+# Pydantic models for battery responses and operations
+class BatteryStatus(BaseModel):
+    battery_id: str
+    capacity_kWh: float
+    soc_kWh: float
+    max_charge_kW: float
+    max_discharge_kW: float
+    eta: float
+
+
+class BatteryOperation(BaseModel):
+    power_kW: float
+    duration_h: float = 1.0  # default duration
+
+
+class BatteryAddRequest(BaseModel):
+    capacity_kWh: float
+    current_soc_kWh: float
+    max_charge_kW: float
+    max_discharge_kW: float
+    eta: float
+
+
+@app.get("/api/batteries", response_model=List[BatteryStatus])
+def get_all_batteries():
+    """
+    Returns list and current state of all batteries.
+    """
+    response = []
+    for battery_id, battery in batteries.items():
+        response.append(
+            BatteryStatus(
+                battery_id=battery_id,
+                capacity_kWh=battery.capacity_kWh,
+                soc_kWh=battery.current_soc_kWh,
+                max_charge_kW=battery.max_charge_kW,
+                max_discharge_kW=battery.max_discharge_kW,
+                eta=battery.round_trip_efficiency,
+            )
+        )
+    return response
+
+
+@app.post("/api/batteries", response_model=BatteryStatus)
+def add_battery(battery: BatteryAddRequest):
+    """
+    Adds a new battery.
+    """
+    # Generate a unique battery ID
+    battery_id = f"battery_{len(batteries) + 1}"
+    capacity_kWh = battery.capacity_kWh
+    current_soc_kWh = battery.current_soc_kWh
+    max_charge_kW = battery.max_charge_kW
+    max_discharge_kW = battery.max_discharge_kW
+    eta = battery.eta
+
+    # Create a new Battery instance
+    new_battery = Battery(
+        battery_id=battery_id,
+        capacity_kWh=capacity_kWh,
+        current_soc_kWh=current_soc_kWh,
+        max_charge_kW=max_charge_kW,
+        max_discharge_kW=max_discharge_kW,
+        round_trip_efficiency=eta,
+    )
+
+    # Store in the in-memory dictionary
+    batteries[battery_id] = new_battery
+
+    # TODO: decide if we want to save the battery state to the database
+    # save_battery_state(new_battery)
+
+    return BatteryStatus(
+        battery_id=battery_id,
+        capacity_kWh=new_battery.capacity_kWh,
+        soc_kWh=new_battery.current_soc_kWh,
+        max_charge_kW=new_battery.max_charge_kW,
+        max_discharge_kW=new_battery.max_discharge_kW,
+        eta=new_battery.round_trip_efficiency,
+    )
+
+
+@app.delete("/api/batteries/{battery_id}", response_model=None)
+def remove_battery(battery_id: str):
+    """
+    Removes a battery from the in-memory store.
+    """
+    if battery_id not in batteries:
+        raise HTTPException(status_code=404, detail="Battery not found")
+
+    del batteries[battery_id]
+
+    # TODO: decide if we want to remove the battery state from the database
+    # remove_battery_state(battery_id)
+
+    return {"detail": "Battery removed successfully"}
+
+
+@app.post("/api/batteries/{battery_id}/charge", response_model=BatteryStatus)
+def charge_battery(battery_id: str, operation: BatteryOperation):
+    """
+    Triggers a charge operation on a specific battery, updating its state.
+    """
+    if battery_id not in batteries:
+        raise HTTPException(status_code=404, detail="Battery not found")
+
+    battery = batteries[battery_id]
+    battery.charge(power_kW=operation.power_kW, duration_h=operation.duration_h)
+
+    # TODO: decide if we want to save the battery state to the database
+    # save_battery_state(battery)
+
+    return BatteryStatus(
+        battery_id=battery_id,
+        capacity_kWh=battery.capacity_kWh,
+        soc_kWh=battery.current_soc_kWh,
+        max_charge_kW=battery.max_charge_kW,
+        max_discharge_kW=battery.max_discharge_kW,
+        eta=battery.round_trip_efficiency,
+    )
+
+
+@app.post("/api/batteries/{battery_id}/discharge", response_model=BatteryStatus)
+def discharge_battery(battery_id: str, operation: BatteryOperation):
+    """
+    Triggers a discharge operation on a specific battery, updating its state.
+    """
+    if battery_id not in batteries:
+        raise HTTPException(status_code=404, detail="Battery not found")
+
+    battery = batteries[battery_id]
+    battery.discharge(power_kW=operation.power_kW, duration_h=operation.duration_h)
+
+    # TODO: decide if we want to save the battery state to the database
+    # save_battery_state(battery)
+
+    return BatteryStatus(
+        battery_id=battery_id,
+        capacity_kWh=battery.capacity_kWh,
+        soc_kWh=battery.current_soc_kWh,
+        max_charge_kW=battery.max_charge_kW,
+        max_discharge_kW=battery.max_discharge_kW,
+        eta=battery.round_trip_efficiency,
+    )
+
+
+@app.get("/api/add-source")
+def add_new_source(source_type: str):
+    """
+    Endpoint to add a new renewable source. It triggers CSV generation and starts a Kafka producer.
+    """
+    try:
+        # Call the creation logic
+        _, source_id = create_new_source(source_type=source_type)
+
+        return Source(source_type=source_type, source_id=source_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/realtime-data/{source}", response_model=List[RealTimeDataPoint])
@@ -158,7 +331,11 @@ def query_forecasted_data(
 
 @app.get("/api/historical/{source}", response_model=List[HistoricalDataPoint])
 def query_historical_data(
-    source: str, source_id: str = None, start: str = None, end: str = None
+    source: str,
+    source_id: str = None,
+    start: str = None,
+    end: str = None,
+    top: int = 50,
 ):
     """
     Queries historical data from a specified source within a given time range.
@@ -176,7 +353,7 @@ def query_historical_data(
     # type of start and end checking
     try:
         dataframe = load_historical_data(
-            source, source_id, start, end
+            source, source_id, start, end, top
         )  # returns list of dicts/objects
 
         historical_data = []
@@ -220,3 +397,24 @@ def query_device_counts():
     solar = len(query_source_ids("solar"))
     wind = len(query_source_ids("wind"))
     return DeviceCounts(solar=solar, wind=wind)
+
+
+@app.post("/api/optimize", response_model=List[Dict[str, Any]])
+def optimize_strategy():
+    """
+    Optimizes the dispatch strategy
+    Args:
+    Returns:
+        pd.DataFrame: A DataFrame containing the optimization results.
+    """
+    if not batteries:
+        raise HTTPException(
+            status_code=400, detail="No batteries available for optimization"
+        )
+
+    battery_list = list(batteries.values())
+    try:
+        result_df = optimize(battery_list)
+        return result_df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

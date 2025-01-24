@@ -35,7 +35,7 @@ def forecast_with_prophet(time_series_df, forecast_steps=24, freq="h"):
     return forecast.tail(forecast_steps)
 
 
-def forecast_and_save(forecast_steps: int = 24, frequency: str = "S"):
+def forecast_and_save(forecast_steps: int = 24, frequency: str = "s"):
     """
     Data Format:
     data_from_db = {"renewables": {renewable1: {source_id_1: pd.Series, source_id_1: pd.Series,...}, renewable2: {}, ... }, "load": pd.Series, "market_price": pd.Series}
@@ -55,9 +55,11 @@ def forecast_and_save(forecast_steps: int = 24, frequency: str = "S"):
                     forecasted[key][renewable][source_id] = forecast_with_prophet(
                         source_data, forecast_steps, frequency
                     )
-        else:  # forecast wind and solar
+        else:  # forecast load and market_price
+            print(f"Forecasting {key}")
             forecasted[key] = forecast_with_prophet(value, forecast_steps, frequency)
 
+    # print from and to of this data
     save_forecasts_to_db(forecasted)
 
 

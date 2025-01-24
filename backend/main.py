@@ -4,6 +4,7 @@ from src.generation import (
     generate_pv_data,
     generate_synthetic_load_data,
     generate_synthetic_market_price,
+    read_generation_config,
 )
 
 from src.communication import (
@@ -22,12 +23,9 @@ import datetime
 if __name__ == "__main__":
 
     # now
-    starting_date = datetime.datetime.now()
-    output_path = "./data/"
-    num_sources = 2
-    freq = "s"
-    num_days = 100  # doesnt matter because minutes * 24
-    sleeping_time = 1
+    output_path, num_sources, freq, num_days, sleeping_time, starting_date = (
+        read_generation_config()
+    )
 
     # emtpy folder output_path
     for file in os.listdir(output_path):

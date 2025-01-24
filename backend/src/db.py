@@ -1,6 +1,7 @@
 import configparser
 import psycopg2
 import pandas as pd
+from src.battery import Battery
 
 RENEWABLES = ["solar", "wind"]  # scalable for more renewables
 
@@ -88,6 +89,21 @@ def reset_tables():
     conn.commit()
 
     queries = []
+
+    battery_query = """
+    DROP TABLE IF EXISTS batteries;
+    CREATE TABLE batteries (
+        time             TIMESTAMPTZ NOT NULL,
+        battery_id       VARCHAR(50),
+        capacity_kWh     DOUBLE PRECISION,
+        soc_kWh          DOUBLE PRECISION,
+        max_charge_kW    DOUBLE PRECISION,
+        max_discharge_kW DOUBLE PRECISION,
+        eta              DOUBLE PRECISION
+    );
+    SELECT create_hypertable('batteries', 'time');
+    """
+    queries.append(battery_query)
 
     for renewable in RENEWABLES:
 
@@ -387,6 +403,46 @@ def load_from_db():
     return result
 
 
+def save_battery_state(battery: Battery):
+    """
+    Save the current state of a battery into the batteries table.
+
+    Parameters:
+    - battery_id: Identifier for the battery.
+    - timestamp: The time at which the state is recorded.
+    - battery: An instance of the Battery class.
+    """
+    conn = _connect()
+    cursor = conn.cursor()
+    timestamp = pd.Timestamp.now()
+
+    # We only keep the latest state of the battery
+    delete_query = "DELETE FROM batteries WHERE battery_id = %s"
+    cursor.execute(delete_query, (battery.battery_id,))
+
+    query = """
+    INSERT INTO batteries 
+    (time, battery_id, capacity_kWh, soc_kWh, max_charge_kW, max_discharge_kW, eta)
+    VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """
+    cursor.execute(
+        query,
+        (
+            timestamp,
+            battery.battery_id,
+            battery.capacity_kWh,
+            battery.current_soc_kWh,
+            battery.max_charge_kW,
+            battery.max_discharge_kW,
+            battery.round_trip_efficiency,
+        ),
+    )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
 def save_to_db(topic: str, timestamp: pd.DatetimeIndex, source_id: str, value: float):
     """
     Assumes that the table for the topic already exists in the database.
@@ -445,7 +501,6 @@ def save_forecasts_to_db(forecasted):
     """
     conn = _connect()
     cursor = conn.cursor()
-
     # Save forecasts for renewables
     renewables = forecasted.get("renewables", {})
     for renewable, sources in renewables.items():
@@ -488,54 +543,53 @@ def save_forecasts_to_db(forecasted):
                     ),
                 )
 
-    # Save forecast for load
-    if "load" in forecasted:
-        df = forecasted["load"]
-        table_name = "load_forecast"
-    elif "market" in forecasted:
-        df = forecasted["market"]
-        table_name = "market_forecast"
+    for other in ["load", "market"]:
 
-    query = f"""
-    INSERT INTO {table_name} (time, trend, yhat_lower, yhat_upper, trend_lower, trend_upper, additive_terms,additive_terms_lower, additive_terms_upper, daily, daily_lower, daily_upper, multiplicative_terms, multiplicative_terms_lower, multiplicative_terms_upper, yhat)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s)
-    """
+        df = forecasted[f"{other}"]
+        table_name = f"{other}_forecast"
 
-    if "daily" not in df.columns:
-        # TODO: handle this better
-        df["daily"] = 0
-        df["daily_lower"] = 0
-        df["daily_upper"] = 0
+        query = f"""
+        INSERT INTO {table_name} (time, trend, yhat_lower, yhat_upper, trend_lower, trend_upper, additive_terms,additive_terms_lower, additive_terms_upper, daily, daily_lower, daily_upper, multiplicative_terms, multiplicative_terms_lower, multiplicative_terms_upper, yhat)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s)
+        """
 
-    for _, row in df.iterrows():
-        cursor.execute(
-            query,
-            (
-                row["ds"],
-                row["trend"],
-                row["yhat_lower"],
-                row["yhat_upper"],
-                row["trend_lower"],
-                row["trend_upper"],
-                row["additive_terms"],
-                row["additive_terms_lower"],
-                row["additive_terms_upper"],
-                row["daily"],
-                row["daily_lower"],
-                row["daily_upper"],
-                row["multiplicative_terms"],
-                row["multiplicative_terms_lower"],
-                row["multiplicative_terms_upper"],
-                row["yhat"],
-            ),
-        )
+        if "daily" not in df.columns:
+            # TODO: handle this better
+            df["daily"] = 0
+            df["daily_lower"] = 0
+            df["daily_upper"] = 0
+
+        for _, row in df.iterrows():
+            cursor.execute(
+                query,
+                (
+                    row["ds"],
+                    row["trend"],
+                    row["yhat_lower"],
+                    row["yhat_upper"],
+                    row["trend_lower"],
+                    row["trend_upper"],
+                    row["additive_terms"],
+                    row["additive_terms_lower"],
+                    row["additive_terms_upper"],
+                    row["daily"],
+                    row["daily_lower"],
+                    row["daily_upper"],
+                    row["multiplicative_terms"],
+                    row["multiplicative_terms_lower"],
+                    row["multiplicative_terms_upper"],
+                    row["yhat"],
+                ),
+            )
 
     conn.commit()
     cursor.close()
     conn.close()
 
 
-def load_historical_data(type: str, source_id: str, start: str = None, end: str = None):
+def load_historical_data(
+    type: str, source_id: str, start: str = None, end: str = None, top: int = None
+):
     """
     Retrieves historical data for a specific type source and source_id (if applicable) within
     an optional time range [start, end].
@@ -563,6 +617,7 @@ def load_historical_data(type: str, source_id: str, start: str = None, end: str 
     # Build the WHERE clause dynamically based on whether start/end are provided
     params = []
     where_clauses = []
+
     if source_id is not None:
         where_clauses.append("source_id = %s")
         params.append(source_id)
@@ -580,16 +635,21 @@ def load_historical_data(type: str, source_id: str, start: str = None, end: str 
             SELECT time, value
             FROM {type}
             WHERE {where_clause}
-            ORDER BY time
+            ORDER BY time DESC
         """
+        if top is not None:
+            query += f" LIMIT {top}"
         cursor.execute(query, params)
 
     else:
         query = f"""
             SELECT time, value
             FROM {type}
-            ORDER BY time
+            ORDER BY time DESC
         """
+        if top is not None:
+            query += f" LIMIT {top}"
+
         cursor.execute(query)
 
     rows = cursor.fetchall()
@@ -612,7 +672,6 @@ def load_forecasted_data(type: str, source_id: str, start: str = None, end: str 
     Retrieves forecasted data for a specific type source and source_id (if applicable) within
     an optional time range [start, end].
     """
-
     conn = _connect()
     cursor = conn.cursor()
 

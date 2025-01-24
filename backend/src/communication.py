@@ -27,6 +27,25 @@ def _get_server_info():
     return config["Kafka"]["bootstrap_servers"]
 
 
+def make_single_producer_info(root: str, source_type: str, source_id: str):
+    """
+    Creates a tuple containing information about a single producer.
+    Args:
+        root (str): The root directory where the CSV file is located.
+        source_type (str): The type of the source (e.g., 'sensor', 'device').
+        source_id (str): The unique identifier of the source.
+    Returns:
+        tuple: A tuple containing the topic name (str), source ID (str), and a DataFrame (pd.DataFrame)
+               with the data read from the CSV file.
+    """
+
+    topic = f"{source_type}-topic"
+    id = source_id
+    df = pd.read_csv(f"{root}/{source_id}_{source_type}.csv", index_col=0)
+    producer_info = (topic, id, df)
+    return producer_info
+
+
 def make_producers_info(root: str = "../data/"):
     """
     Generates a list of tuples containing information about renewable energy producers,

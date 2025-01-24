@@ -1,0 +1,72 @@
+
+            {/* Real-Time Box */}
+            <Box my={4}>
+               
+
+                <Typography variant="h2" component="h1" gutterBottom align="center">
+                    Real-Time Data Plot
+                </Typography>
+
+
+                <Grid item xs={12}>
+                    <Paper elevation={3} sx={{ p: 2 }}>
+                        <FormControl fullWidth>
+                            <InputLabel id="source-select-label">Select Source Real Time</InputLabel>
+                            <Select
+                                labelId="source-real-time-select-label"
+                                id="source-real-time-select"
+                                value={selectedSourceRealTime}
+                                label="Select Realtime Source"
+                                onChange={(e) => setSelectedSourceRealTime(e.target.value as string)}
+                            >
+                                <MenuItem value="solar">Solar</MenuItem>
+                                <MenuItem value="wind">Wind</MenuItem>
+                                <MenuItem value="load">Load</MenuItem>
+                                <MenuItem value="market">Market</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Paper>
+                </Grid>
+
+                {
+                    selectedSourceRealTime !== 'market' && selectedSourceRealTime !== 'load' && (
+                        <Grid item xs={12}>
+                            <Paper elevation={3} sx={{ p: 2 }}>
+                                <FormControl fullWidth>
+                                    <InputLabel id="source-id-realtime-select-label">Select Source ID</InputLabel>
+                                    <Select
+                                        labelId="source-id-realtime-select-label"
+                                        id="source-id-realtime-select"
+                                        value={selectedSourceIDRealTime}
+                                        label="Select Source Real Time ID"
+                                        onChange={(e) => setSelectedSourceIDRealTime(e.target.value as string)}
+                                    >
+                                        {sourceIDs.map((id) => (
+                                            <MenuItem key={id} value={id}>{id}</MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Paper>
+                        </Grid>
+                    )
+                }
+
+                <Grid item xs={12}>
+                    <Paper elevation={3} sx={{ p: 2 }}>
+                        <TimeRangeSelector value={selectedRangeRealTime} onChange={setSelectedRangeRealTime} />
+                    </Paper>
+                </Grid>
+
+
+
+                <Grid item xs={12}>
+                    <Paper elevation={3} sx={{ p: 2 }}>
+                        <RealTimeDataViewer
+                            source={selectedSourceRealTime}
+                            sourceId={selectedSourceIDRealTime}
+                            start={safeToISOString(selectedRangeRealTime[0])}
+                            end={safeToISOString(selectedRangeRealTime[1])}
+                        />
+                    </Paper>
+                </Grid>
+            </Box>
