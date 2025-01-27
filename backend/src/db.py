@@ -1,7 +1,14 @@
 import configparser
 import psycopg2
+from psycopg2.extras import execute_values
 import pandas as pd
 from src.battery import Battery
+import csv
+
+import os
+import pandas as pd
+from typing import Optional
+
 
 RENEWABLES = ["solar", "wind"]  # scalable for more renewables
 
@@ -474,7 +481,6 @@ def save_to_db(topic: str, timestamp: pd.DatetimeIndex, source_id: str, value: f
         cursor.execute(query, (timestamp, value))
 
     conn.commit()
-    print(f"Inserted data from {topic} at {timestamp}")
 
     cursor.close()
     conn.close()
@@ -767,3 +773,125 @@ def query_source_ids(source: str):
     conn.close()
 
     return source_ids
+
+
+# def dump_csv_folder_to_db(folder_path: str):
+#     """
+#     Loops over all .csv files in `folder_path`, each named "<source_id>_<source>.csv".
+#     Each CSV has exactly one column of values (no time column).
+
+#     For each file:
+#       1. Parse filename to extract `source_id` and `source`.
+#       2. Read the single column of data.
+#       3. Generate a simple sequence of timestamps (e.g. consecutive minutes) for each row.
+#       4. Insert each row into the DB using `save_to_db(...)`.
+
+#     Parameters
+#     ----------
+#     folder_path : str
+#         Path to the folder containing CSV files.
+#     """
+
+#     for filename in os.listdir(folder_path):
+#         if not filename.endswith(".csv"):
+#             continue  # skip non-CSV files
+
+#         full_path = os.path.join(folder_path, filename)
+
+#         # 1. Parse out source_id & source
+#         #    Example filename: "0GFA4K_solar.csv"
+#         name_no_ext = filename.rsplit(".", 1)[0]  # -> "0GFA4K_solar"
+#         parts = name_no_ext.split("_", 1)  # -> ["0GFA4K", "solar"]
+#         if len(parts) != 2:
+#             print(f"Skipping {filename}: not in 'sourceid_source.csv' format.")
+#             continue
+#         source_id, source = parts
+
+#         # 2. Read CSV with one single column
+#         df = pd.read_csv(full_path, index_col=0)
+
+#         # Insert row by row into DB
+#         for i, row in df.iterrows():
+#             ts = i
+#             # assume only one columns
+#             val = str(row.values[0])
+#             if source in RENEWABLES:
+#                 # for solar / wind, pass the parsed source_id
+#                 save_to_db(source, ts, source_id, val)
+#             else:
+#                 # for load / market, pass None or ignore `source_id`
+#                 save_to_db(source, ts, None, val)
+
+#         print(f"Inserted {len(df)} rows from file '{filename}' into table '{source}'.")
+
+
+def dump_csv_folder_to_db(folder_path: str):
+    """
+    Loops over all .csv files in `folder_path`, each named "<source_id>_<source>.csv".
+    We assume:
+      - The CSV index is the "time" column (or at least a date/datetime)
+      - There is exactly one data column named 'value' (or 1 unnamed column we rename).
+    Then we insert them in bulk using execute_values for faster loading.
+    """
+
+    for filename in os.listdir(folder_path):
+        if "weather" in filename:
+            continue
+        if not filename.endswith(".csv"):
+            continue
+
+        full_path = os.path.join(folder_path, filename)
+
+        # 1. Parse out source_id & source from the filename
+        name_no_ext = filename.rsplit(".", 1)[0]  # -> "0GFA4K_solar"
+        source_id = name_no_ext.split("_")[0]  # ->  "0GFA4K"
+        source = name_no_ext.split("_")[1]  # -> "solar"
+
+        # 2. Load CSV into DataFrame
+        #    We expect a single column 'value' or no header -> rename to 'value'.
+        #    The index is your timestamp.
+        df = pd.read_csv(full_path, index_col=0)
+
+        # 3. Decide table name and source_id usage
+        #    - If 'source' is in RENEWABLES, we use that as the table name, else it might be "load" or "market"
+        table_name = source  # e.g. "solar", "wind", "load", "market"
+
+        # For each row, we need (time, source_id, value) for renewables or (time, value) for non-renewables
+        # but let's unify as (time, source_id, value) and set source_id=None if not renewables.
+
+        # We'll build a list of tuples
+        data_tuples = []
+        for i, row in df.iterrows():
+            t = i
+            val = float(row.values[0]) if pd.notnull(row.values[0]) else None
+
+            # If source is renewable, use the parsed source_id; otherwise None
+            sid = source_id if source in RENEWABLES else None
+
+            # We'll store them in the order that matches our final INSERT statement
+            data_tuples.append((t, sid, val))
+
+        # 4. Bulk insert with execute_values
+        #    Build the correct SQL depending on whether table_name is renewable or not
+        #    But let's unify: the table always has columns (time, source_id, value) for solar/wind,
+        #    while load/market have columns (time, value). We'll just pass source_id as NULL for load/market.
+
+        if source in RENEWABLES:
+            insert_sql = f"""
+                INSERT INTO {table_name} (time, source_id, value)
+                VALUES %s
+            """
+            with _connect() as conn, conn.cursor() as cursor:
+                execute_values(cursor, insert_sql, data_tuples)
+        else:
+            insert_sql = f"""
+                INSERT INTO {table_name} (time, value)
+                VALUES %s
+            """
+            with _connect() as conn, conn.cursor() as cursor:
+                data_tuples = [(t, val) for t, _, val in data_tuples]
+                execute_values(cursor, insert_sql, data_tuples)
+
+        print(
+            f"Inserted {len(data_tuples)} rows from '{filename}' into table '{table_name}'."
+        )

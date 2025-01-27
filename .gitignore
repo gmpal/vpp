@@ -9,6 +9,10 @@ __pycache__/
 # C extensions
 *.so
 
+data/
+airflow-data/
+mlruns/
+
 # Distribution / packaging
 .Python
 build/

@@ -16,7 +16,6 @@ from datetime import datetime
 def read_generation_config(filename: str = "config.ini") -> dict:
     config = configparser.ConfigParser()
     config.read(filename)
-
     config = {
         "output_path": config.get("Generation", "output_path"),
         "num_sources": int(config.get("Generation", "num_sources")),

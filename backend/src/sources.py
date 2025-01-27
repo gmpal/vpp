@@ -16,7 +16,7 @@ import random
 import string
 
 
-def create_new_source(source_type: str):
+def create_new_source(source_type: str, kakfa_flag=False):
     """
     Creates a new data source for weather forecasting and starts a Kafka producer process.
     Args:
@@ -42,8 +42,9 @@ def create_new_source(source_type: str):
     sleeping_time = configs["sleeping_time"]
 
     # random sequence of nums nad letters
-    source_id = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    source_id = "".join(random.choices(string.digits, k=6))
 
+    print(f"Creating new source with ID: {source_id}")
     # Generate weather data for the new source
     weather_data = generate_weather_data(
         starting_date,
@@ -67,13 +68,18 @@ def create_new_source(source_type: str):
             source_id=source_id,
         )
 
-    # Update producers_bundles to include the new source
-    new_producer_bundle = make_single_producer_info(output_path, source_type, source_id)
+    if kakfa_flag:
+        # Update producers_bundles to include the new source
+        new_producer_bundle = make_single_producer_info(
+            output_path, source_type, source_id
+        )
 
-    # Start a new Kafka producer process for the new source
-    new_producer_process = Process(
-        target=kafka_produce, args=(new_producer_bundle, sleeping_time)
-    )
-    new_producer_process.start()
+        # Start a new Kafka producer process for the new source
+        new_producer_process = Process(
+            target=kafka_produce, args=(new_producer_bundle, sleeping_time)
+        )
+        new_producer_process.start()
 
-    return new_producer_process, source_id
+        return new_producer_process, source_id
+
+    return None, source_id

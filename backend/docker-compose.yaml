@@ -9,7 +9,7 @@ services:
     ports:
       - "2181:2181"
 
-  # Kafka service for message broker
+  # # Kafka service for message broker
   kafka:
     image: confluentinc/cp-kafka:latest
     container_name: kafka
@@ -24,7 +24,33 @@ services:
     ports:
       - "9092:9092"
 
-  # TimescaleDB service for time-series database
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - ./airflow-data/postgres:/var/lib/postgresql/data
+    ports:
+      - "5454:5432"
+
+  webserver:
+    image: apache/airflow:latest
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    volumes:
+      - ./airflow-data/dags:/opt/airflow/dags
+      - ./airflow-data/logs:/opt/airflow/logs
+      - ./airflow-data/plugins:/opt/airflow/plugins
+    ports:
+      - "8080:8080"
+
+    # TimescaleDB service for time-series database
   timescaledb:
     image: timescale/timescaledb-ha:pg17
     container_name: timescaledb
@@ -37,19 +63,9 @@ services:
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
 
-  # Grafana service for visualization
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    depends_on:
-      - timescaledb
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: graffetta
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-
 volumes:
   timescaledb_data:
   grafana_data:
+
+  
+

@@ -232,7 +232,7 @@ def add_new_source(source_type: str):
     """
     try:
         # Call the creation logic
-        _, source_id = create_new_source(source_type=source_type)
+        _, source_id = create_new_source(source_type=source_type, kakfa_flag=True)
 
         return Source(source_type=source_type, source_id=source_id)
     except Exception as e:
