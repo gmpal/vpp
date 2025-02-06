@@ -1,6 +1,6 @@
 from .arima import ARIMATimeSeriesModel
 from .prophet import ProphetTimeSeriesModel
-from .random_forest import RandomForestTimeSeriesModel
+from .rf import RandomForestTimeSeriesModel
 from .tft import TFTTimeSeriesModel
 
 __all__ = [

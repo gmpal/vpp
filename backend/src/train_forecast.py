@@ -1,21 +1,24 @@
 import mlflow
-import pandas as pd
-import numpy as np
-import os, pickle
+import os
+import pickle
 
 # Import your models
 from src.models import (
     ARIMATimeSeriesModel,
     ProphetTimeSeriesModel,
     RandomForestTimeSeriesModel,
-    TFTTimeSeriesModel
+    TFTTimeSeriesModel,
 )
-from src.db import load_from_db
+from src.db import load_historical_data
+
 
 def main_pipeline():
     # 1) Load data
-    df = load_from_db("solar", "010780")
-    print(f"Data loaded. Shape: {df.shape}, Time range: [{df.index.min()} - {df.index.max()}]")
+    df = load_historical_data("solar", "010780")
+    print(
+        f"Data loaded. Shape: {df.shape}, Time range:  \
+              [{df.index.min()} - {df.index.max()}]"
+    )
 
     # 2) Train-test split (80% / 20%)
     split_index = int(0.8 * len(df))
@@ -27,20 +30,20 @@ def main_pipeline():
     model_configs = [
         {
             "name": "ARIMA",
-            "instance": ARIMATimeSeriesModel(use_exogenous=True, seasonal=True, m=24),
-            "tune_enabled": True,
+            "instance": ARIMATimeSeriesModel(seasonal=True, m=24),
+            "tune_enabled": False,
             "artifact_method": "sklearn",  # We'll do mlflow.sklearn.log_model
         },
         {
             "name": "Prophet",
             "instance": ProphetTimeSeriesModel(),
-            "tune_enabled": True,  # or False if your prophet class doesn't have tune
+            "tune_enabled": False,
             "artifact_method": "sklearn",  # or 'custom'
         },
         {
             "name": "RandomForest",
             "instance": RandomForestTimeSeriesModel(),
-            "tune_enabled": True,
+            "tune_enabled": False,
             "artifact_method": "sklearn",
         },
         {
@@ -55,8 +58,8 @@ def main_pipeline():
     results = {}
 
     # 4) Start MLflow experiment
-    mlflow.set_experiment("Compare_All_Models")
-    with mlflow.start_run(run_name="Compare_All_Models") as parent_run:
+    mlflow.set_experiment("Compare_Models")
+    with mlflow.start_run(run_name="Compare_Models") as parent_run:
         parent_run_id = parent_run.info.run_id
         print(f"Parent run ID: {parent_run_id}")
 
@@ -73,7 +76,7 @@ def main_pipeline():
                 # a) Tuning (if enabled)
                 if do_tune:
                     print(f"Tuning {model_name}...")
-                    best_params = model_obj.tune(df_train, n_trials=10)
+                    best_params = model_obj.tune(df_train, n_trials=3)
                     if best_params:
                         mlflow.log_params(best_params)
                 else:
@@ -91,7 +94,7 @@ def main_pipeline():
                 # d) Log model artifacts
                 if model_obj.model is not None:
                     if artifact_method == "sklearn":
-                        # Some models are scikit-learn compatible or Prophet-like
+
                         mlflow.sklearn.log_model(
                             model_obj.model, artifact_path=f"{model_name}_model"
                         )
@@ -100,7 +103,9 @@ def main_pipeline():
                         filename = f"{model_name}_model.pkl"
                         with open(filename, "wb") as f:
                             pickle.dump(model_obj.model, f)
-                        mlflow.log_artifact(filename, artifact_path=f"{model_name}_model")
+                        mlflow.log_artifact(
+                            filename, artifact_path=f"{model_name}_model"
+                        )
                         os.remove(filename)
 
         # 5) Final Compare in parent run
@@ -120,9 +125,7 @@ def main_pipeline():
         print("==========================================================")
 
         # 6) Example registering best model (placeholder)
-        best_model_uri = f"runs:/{mlflow.active_run().info.run_id}/{best_model_name}_model"
-        # mlflow.register_model(best_model_uri, "Best_TimeSeries_Model")
-
-
-if __name__ == "__main__":
-    main_pipeline()
+        best_model_uri = (
+            f"runs:/{mlflow.active_run().info.run_id}/{best_model_name}_model"
+        )
+        mlflow.register_model(best_model_uri, "Best_TimeSeries_Model")

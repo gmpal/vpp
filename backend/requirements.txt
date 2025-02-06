@@ -34,3 +34,4 @@ apache-airflow
 pmdarima 
 plotly
 darts
+asyncpg

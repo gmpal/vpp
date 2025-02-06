@@ -15,7 +15,7 @@ class ARIMATimeSeriesModel(BaseTimeSeriesModel):
     Optionally uses time-based features (exogenous variables) via create_time_features().
     """
 
-    def __init__(self, use_exogenous: bool = False, seasonal: bool = True, m: int = 24):
+    def __init__(self, use_exogenous: bool = True, seasonal: bool = True, m: int = 24):
         """
         Initialize the ARIMA model parameters.
 
@@ -75,15 +75,15 @@ class ARIMATimeSeriesModel(BaseTimeSeriesModel):
                 order=(p, d, q),
                 seasonal_order=(P, D, Q, m) if seasonal else None,
                 suppress_warnings=True,
-                error_action='ignore'
+                error_action="ignore",
             )
             model.fit(y, exogenous=exog)
             preds = model.predict_in_sample(exogenous=exog)
             mse = mean_squared_error(y, preds)
             return mse
         except Exception as e:
-            # If model fitting fails, return a high MSE to discourage this parameter set
-            return float('inf')
+            # If model fitting fails, rdiscourage this parameter set
+            return float("inf"), e
 
     def tune(self, df: pd.DataFrame, n_trials: int = 20) -> Dict[str, Any]:
         """
@@ -137,7 +137,6 @@ class ARIMATimeSeriesModel(BaseTimeSeriesModel):
                 order=(p, d, q),
                 seasonal_order=(P, D, Q, m) if seasonal else None,
                 suppress_warnings=True,
-                error_action='ignore'
             )
             self.model.fit(y, exog=exog)
             self.order_ = self.model.order
@@ -168,4 +167,4 @@ class ARIMATimeSeriesModel(BaseTimeSeriesModel):
             return mse
         except Exception as e:
             print(f"Failed to predict using ARIMA model: {e}")
-            return float('inf')
+            return float("inf")

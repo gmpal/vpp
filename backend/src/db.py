@@ -20,12 +20,15 @@ def _connect():
     config = configparser.ConfigParser()
     config.read("config.ini")
 
+    # Use environment variables if available; otherwise, fallback to config.ini
     db_connection_info = {
-        "dbname": config["TimescaleDB"]["dbname"],
-        "user": config["TimescaleDB"]["user"],
-        "password": config["TimescaleDB"]["password"],
-        "host": config["TimescaleDB"]["host"],
-        "port": config["TimescaleDB"]["port"],
+        "dbname": os.environ.get("POSTGRES_DB", config["TimescaleDB"]["dbname"]),
+        "user": os.environ.get("POSTGRES_USER", config["TimescaleDB"]["user"]),
+        "password": os.environ.get(
+            "POSTGRES_PASSWORD", config["TimescaleDB"]["password"]
+        ),
+        "host": os.environ.get("TIMESCALEDB_HOST", config["TimescaleDB"]["host"]),
+        "port": os.environ.get("POSTGRES_PORT", config["TimescaleDB"]["port"]),
     }
 
     conn = psycopg2.connect(**db_connection_info)

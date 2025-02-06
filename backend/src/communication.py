@@ -23,8 +23,10 @@ def _get_server_info():
     # Read the config.ini file
     config.read("config.ini")
 
+    os.environ.get("KAFKA_BOOTSTRAP_SERVERS", config["Kafka"]["bootstrap_servers"])
+
     # Access Kafka settings
-    return config["Kafka"]["bootstrap_servers"]
+    return
 
 
 def make_single_producer_info(root: str, source_type: str, source_id: str):

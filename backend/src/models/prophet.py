@@ -1,19 +1,19 @@
 import optuna
-import mlflow
 import pandas as pd
 from prophet import Prophet
 from sklearn.metrics import mean_squared_error
-from src.model.base import BaseTimeSeriesModel
+from src.models.base import BaseTimeSeriesModel
+
 
 class ProphetTimeSeriesModel(BaseTimeSeriesModel):
     def __init__(self, params=None):
-    """
-    params can store default or user-specified hyperparameters, e.g.
-    {'seasonality_mode': 'multiplicative', 'changepoint_prior_scale': 0.05, ...}
-    """
-    self.params = params if params is not None else {}
-    self.model = None  # Will store the fitted Prophet model
-
+        """
+        params can store default or user-specified hyperparameters, e.g.
+        {'seasonality_mode': 'multiplicative',
+        'changepoint_prior_scale': 0.05, ...}
+        """
+        self.params = params if params is not None else {}
+        self.model = None  # Will store the fitted Prophet model
 
     def objective(self, trial, df_prophet) -> float:
         # Example objective function for Prophet hyperparam tuning with Optuna
@@ -45,7 +45,9 @@ class ProphetTimeSeriesModel(BaseTimeSeriesModel):
         df_prophet["ds"] = df_prophet["ds"].dt.tz_localize(None)
 
         study = optuna.create_study(direction="minimize")
-        study.optimize(lambda trial: self.objective(trial, df_prophet), n_trials=n_trials)
+        study.optimize(
+            lambda trial: self.objective(trial, df_prophet), n_trials=n_trials
+        )
 
         self.params.update(study.best_params)  # Store best params internally
 
@@ -62,11 +64,11 @@ class ProphetTimeSeriesModel(BaseTimeSeriesModel):
         Returns (model, mse) on the training set for illustration.
         """
 
-        #TODO: decide what to do with these
-        # run_name="ProphetModel" 
+        # TODO: decide what to do with these
+        # run_name="ProphetModel"
 
         # with mlflow.start_run(run_name=run_name, nested=True):
-            # Prepare data
+        # Prepare data
         df_prophet = df.reset_index()
         df_prophet.columns = ["ds", "y"]
         df_prophet["ds"] = df_prophet["ds"].dt.tz_localize(None)
@@ -79,7 +81,6 @@ class ProphetTimeSeriesModel(BaseTimeSeriesModel):
         # train_mse = mean_squared_error(df_prophet["y"], forecast["yhat"])
         # mlflow.log_metric("train_mse", train_mse)
         # mlflow.sklearn.log_model(model, artifact_path="prophet_model")
-
 
     def evaluate(self, df: pd.DataFrame, **kwargs) -> float:
         """

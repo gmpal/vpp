@@ -1,10 +1,11 @@
 # app.py
-from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 import pandas as pd
+import asyncpg
+import os
 
 from src.db import (
     load_from_db,
@@ -26,8 +27,8 @@ app = FastAPI()
 # Configure CORS if your frontend is on a different origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust origins as needed for production
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -100,6 +101,11 @@ class BatteryAddRequest(BaseModel):
     max_charge_kW: float
     max_discharge_kW: float
     eta: float
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 
 @app.get("/api/batteries", response_model=List[BatteryStatus])
@@ -418,3 +424,46 @@ def optimize_strategy():
         return result_df.to_dict(orient="records")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# # Database connection details from environment variables
+# POSTGRES_USER = os.getenv("POSTGRES_USER", "gmpal")
+# POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgresso")
+# POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
+# TIMESCALEDB_HOST = os.getenv("TIMESCALEDB_HOST", "timescaledb.vpp.local")
+# POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
+
+
+# # Create a connection pool (for example purposes, adjust as needed)
+# @app.on_event("startup")
+# async def startup():
+#     app.state.db_pool = await asyncpg.create_pool(
+#         user=POSTGRES_USER,
+#         password=POSTGRES_PASSWORD,
+#         database=POSTGRES_DB,
+#         host=TIMESCALEDB_HOST,
+#         port=POSTGRES_PORT,
+#     )
+
+
+# @app.on_event("shutdown")
+# async def shutdown():
+#     await app.state.db_pool.close()
+
+
+# @app.get("/health/db")
+# async def health_check():
+#     try:
+#         async with app.state.db_pool.acquire() as connection:
+#             # Execute a lightweight query
+#             result = await connection.fetchval("SELECT 1;")
+#             if result == 1:
+#                 return {"status": "ok", "message": "Database connectivity is healthy."}
+#             else:
+#                 raise HTTPException(
+#                     status_code=500, detail="Unexpected database response."
+#                 )
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500, detail=f"Database connectivity error: {str(e)}"
+#         )

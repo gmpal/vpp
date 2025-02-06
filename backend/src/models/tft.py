@@ -1,7 +1,24 @@
+import pandas as pd
+from sklearn.metrics import mean_squared_error
+
+from src.models.base import BaseTimeSeriesModel
+from src.feature_engineering import (
+    create_time_features,
+    create_future_features,
+)
+
+import optuna
+from typing import Dict, Any, Tuple
+from darts.models import TFTModel
+from darts import TimeSeries
+from darts.dataprocessing.transformers import Scaler
+
+
 class TFTTimeSeriesModel(BaseTimeSeriesModel):
     """
     A time-series model using Darts' TemporalFusionTransformer (TFT).
-    Optionally uses time-based features (exogenous variables) via create_time_features().
+    Optionally uses time-based features (exogenous variables)
+    via create_time_features().
     """
 
     def __init__(self, use_hyperopt: bool = False, n_trials: int = 10):
@@ -16,31 +33,56 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         self.n_trials = n_trials
         self.model = None  # Will store the trained TFT model
         self.target_scaler = None  # Scaler for target
-        self.covariate_scaler = None  # Scaler for covariates
-        self.best_params = None  # To store the best hyperparameters from tuning
+        self.past_covariate_scaler = None  # Scaler for covariates
+        self.future_covariate_scaler = None  # Scaler for future covariates
+        self.best_params = None  # To store the best hyperparameters
 
-    def _create_features(self, df: pd.DataFrame) -> (TimeSeries, TimeSeries):
+    def _create_features(self, df: pd.DataFrame) -> Tuple[TimeSeries, TimeSeries]:
         """
         Convert DataFrame to Darts TimeSeries and create past covariates.
 
         Args:
-            df (pd.DataFrame): Input DataFrame with DateTime index and 'value' column.
+            df (pd.DataFrame): Input DataFrame with DateTime index
+            and 'value' column.
 
         Returns:
             TimeSeries: Transformed target series.
             TimeSeries: Transformed past covariates.
+            TimeSeries: Transformed future covariates.
+
         """
+
+        if df.index.tz is None:
+            df = df.tz_localize("UTC")
+        else:
+            df = df.tz_convert("UTC")
+
         # Convert target to TimeSeries
         ts = TimeSeries.from_dataframe(df, value_cols=["value"], freq=None)
 
-        # Create covariates
-        df_feat = create_time_features(df)
-        cov_cols = ["hour_sin", "hour_cos", "dow_sin", "dow_cos"]
-        covariates = TimeSeries.from_dataframe(df_feat[cov_cols], freq=None)
+        # Create past covariates
+        df_past_covariates = create_time_features(df)
+        past_cov_cols = ["hour_sin", "hour_cos", "dow_sin", "dow_cos"]
+        past_covariates = TimeSeries.from_dataframe(
+            df_past_covariates[past_cov_cols], freq=None
+        )
 
-        return ts, covariates
+        # Create future covariates
+        df_future_cov = create_future_features(df)  # You need to define this function
+        future_cov_cols = ["holiday"]  # Example columns
+        future_covariates = TimeSeries.from_dataframe(
+            df_future_cov[future_cov_cols], freq=None
+        )
 
-    def _objective(self, trial, ts_train: TimeSeries, covariates_train: TimeSeries) -> float:
+        return ts, past_covariates, future_covariates
+
+    def _objective(
+        self,
+        trial,
+        ts_train: TimeSeries,
+        past_covariates_train: TimeSeries,
+        future_covariates_train: TimeSeries,
+    ) -> float:
         """
         TODO: adapt to the interface objective() function
         Objective function for Optuna hyperparameter tuning.
@@ -48,7 +90,8 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         Args:
             trial: Optuna trial object.
             ts_train (TimeSeries): Training target series.
-            covariates_train (TimeSeries): Training past covariates.
+            past_covariates_train (TimeSeries): Training past covariates.
+            future_covariates_train (TimeSeries): Training future covariates.
 
         Returns:
             float: Mean Squared Error of the backtest.
@@ -73,29 +116,34 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
 
         try:
             # Fit the model
-            model.fit(ts_train, past_covariates=covariates_train, verbose=False)
+            model.fit(
+                ts_train,
+                past_covariates=past_covariates_train,
+                future_covariates=future_covariates_train,
+                verbose=False,
+            )
 
             # Perform backtest
             backtest = model.backtest(
                 series=ts_train,
-                past_covariates=covariates_train,
+                past_covariates=past_covariates_train,
+                future_covariates=future_covariates_train,
                 start=0.8,  # use last 20% for validation
                 forecast_horizon=6,
                 stride=6,
-                retrain=False
+                retrain=False,
             )
 
             # Calculate MSE
             mse = mean_squared_error(
-                ts_train.slice_intersect(backtest).values(),
-                backtest.values()
+                ts_train.slice_intersect(backtest).values(), backtest.values()
             )
 
             return mse
 
         except Exception as e:
-            # If model fitting fails, return a high MSE to discourage this parameter set
-            return float('inf')
+            # If model fitting fails, discourage this parameter set
+            return float("inf"), e
 
     def tune(self, df: pd.DataFrame, **kwargs) -> Dict[str, Any]:
         """
@@ -108,19 +156,33 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         Returns:
             Dict[str, Any]: The best hyperparameters found.
         """
-        ts_train, covariates_train = self._create_features(df)
+        ts_train, past_covariates_train, future_covariates_train = (
+            self._create_features(df)
+        )
 
         # Scale target and covariates
         self.target_scaler = Scaler()
-        self.covariate_scaler = Scaler()
+        self.past_covariate_scaler = Scaler()
+        self.future_covariate_scaler = Scaler()
+
         ts_train_scaled = self.target_scaler.fit_transform(ts_train)
-        covariates_train_scaled = self.covariate_scaler.fit_transform(covariates_train)
+        past_covariates_train_scaled = self.past_covariate_scaler.fit_transform(
+            past_covariates_train
+        )
+        future_covariates_train_scaled = self.future_covariate_scaler.fit_transform(
+            future_covariates_train
+        )
 
         # Create Optuna study
         study = optuna.create_study(direction="minimize")
         study.optimize(
-            lambda trial: self._objective(trial, ts_train_scaled, covariates_train_scaled),
-            n_trials=self.n_trials
+            lambda trial: self._objective(
+                trial,
+                ts_train_scaled,
+                past_covariates_train_scaled,
+                future_covariates_train_scaled,
+            ),
+            n_trials=self.n_trials,
         )
 
         self.best_params = study.best_params
@@ -131,16 +193,26 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         Train the TFT model using the best hyperparameters.
 
         Args:
-            df (pd.DataFrame): Training DataFrame with DateTime index and 'value' column.
+            df (pd.DataFrame): Training DataFrame with DateTime
+            index and 'value' column.
             **kwargs: Additional keyword arguments.
         """
-        ts_train, covariates_train = self._create_features(df)
+        ts_train, past_covariates_train, future_covariates_train = (
+            self._create_features(df)
+        )
 
         # Scale target and covariates
         self.target_scaler = Scaler()
-        self.covariate_scaler = Scaler()
+        self.past_covariate_scaler = Scaler()
+        self.future_covariate_scaler = Scaler()
+
         ts_train_scaled = self.target_scaler.fit_transform(ts_train)
-        covariates_train_scaled = self.covariate_scaler.fit_transform(covariates_train)
+        past_covariates_train_scaled = self.past_covariate_scaler.fit_transform(
+            past_covariates_train
+        )
+        future_covariates_train_scaled = self.future_covariate_scaler.fit_transform(
+            future_covariates_train
+        )
 
         # Use best_params if available, else use defaults
         if self.use_hyperopt and self.best_params:
@@ -168,7 +240,12 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
 
         try:
             # Fit the model
-            self.model.fit(ts_train_scaled, past_covariates=covariates_train_scaled, verbose=False)
+            self.model.fit(
+                ts_train_scaled,
+                past_covariates=past_covariates_train_scaled,
+                future_covariates=future_covariates_train_scaled,
+                verbose=False,
+            )
         except Exception as e:
             print(f"Failed to train TFT model: {e}")
             self.model = None
@@ -187,18 +264,26 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         if self.model is None:
             raise ValueError("Model has not been trained. Call train() first.")
 
-        ts_test, covariates_test = self._create_features(df)
+        ts_test, past_covariates_test, future_covariates_test = self._create_features(
+            df
+        )
 
         # Scale test data using the same scalers
         ts_test_scaled = self.target_scaler.transform(ts_test)
-        covariates_test_scaled = self.covariate_scaler.transform(covariates_test)
+        past_covariates_test_scaled = self.past_covariate_scaler.transform(
+            past_covariates_test
+        )
+        future_covariates_test_scaled = self.future_covariate_scaler.transform(
+            future_covariates_test
+        )
 
         try:
             # Predict
             preds = self.model.predict(
                 n=len(ts_test_scaled),
                 series=ts_test_scaled,
-                past_covariates=covariates_test_scaled
+                past_covariates=past_covariates_test_scaled,
+                future_covariates=future_covariates_test_scaled,
             )
 
             # Compute MSE
@@ -208,4 +293,4 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
 
         except Exception as e:
             print(f"Failed to predict using TFT model: {e}")
-            return float('inf')
+            return float("inf")

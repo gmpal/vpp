@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Zookeeper service for Kafka cluster management
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  # Kafka service for message broker
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092  # Use service name for inter-service communication
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+
+  # TimescaleDB service for time-series database
+  timescaledb:
+    image: timescale/timescaledb-ha:pg17
+    container_name: timescaledb
+    environment:
+      POSTGRES_PASSWORD: postgresso
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d/  # Mount initialization scripts
+
+  # Backend service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: backend
+    depends_on:
+      - kafka
+      - timescaledb
+    environment:
+      # Environment variables for backend
+      DATABASE_URL: postgres://postgres:postgresso@timescaledb:5432/postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # Add other necessary environment variables
+    ports:
+      - "8000:8000"  # Adjust based on your backend port
+    volumes:
+      - ./backend:/app  # Optional: for live code reload during development
+
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: frontend
+    depends_on:
+      - backend  # Ensure backend starts before frontend if necessary
+    environment:
+      # Environment variables for frontend, if any
+      REACT_APP_API_URL: http://localhost:8000  # Adjust based on your setup
+    ports:
+      - "3000:80"  # Map Nginx port 80 to host port 3000
+    volumes:
+      - ./frontend:/app  # Optional: for live code reload during development
+
+volumes:
+  timescaledb_data:

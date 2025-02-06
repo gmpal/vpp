@@ -129,3 +129,10 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# flake8
+.flake8
+
+# vscode
+.vscode/
+**/.vscode/
