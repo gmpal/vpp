@@ -11,6 +11,7 @@ from typing import Optional
 
 
 RENEWABLES = ["solar", "wind"]  # scalable for more renewables
+OTHER_DATASETS = ["load", "market"]
 
 
 def _connect():
@@ -489,8 +490,79 @@ def save_to_db(topic: str, timestamp: pd.DatetimeIndex, source_id: str, value: f
     conn.close()
 
 
+def save_single_forecasts_to_db(source, source_id, forecasted_df):
+    conn = _connect()
+    cursor = conn.cursor()
+
+    table_name = f"{source}_forecast"
+    # Prepare insert query for renewables forecast
+    if source in RENEWABLES:
+        query = f"""
+        INSERT INTO {table_name} (time, source_id, trend, yhat_lower, yhat_upper, trend_lower, trend_upper, additive_terms,additive_terms_lower, additive_terms_upper, daily, daily_lower, daily_upper, multiplicative_terms, multiplicative_terms_lower, multiplicative_terms_upper, yhat)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s)
+        """
+
+        for time, row in forecasted_df.iterrows():
+            cursor.execute(
+                query,
+                (
+                    time,
+                    source_id,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    row["value"],
+                ),
+            )
+
+    else:
+        query = f"""
+        INSERT INTO {table_name} (time, trend, yhat_lower, yhat_upper, trend_lower, trend_upper, additive_terms,additive_terms_lower, additive_terms_upper, daily, daily_lower, daily_upper, multiplicative_terms, multiplicative_terms_lower, multiplicative_terms_upper, yhat)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s)
+        """
+
+        for time, row in forecasted_df.iterrows():
+            cursor.execute(
+                query,
+                (
+                    time,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    row["value"],
+                ),
+            )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+
 def save_forecasts_to_db(forecasted):
     """
+    TODO: obsolete, use save_single_forecasts_to_db
     TODO: merge the two queries by adapting the DB structure and using 'None' for source_id in case of load and market
 
     Saves forecasted data from the provided dictionary to the database.

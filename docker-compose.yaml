@@ -1,7 +1,7 @@
-version: '3.8'
+# version: '3.8'
 
 services:
-  # Zookeeper service for Kafka cluster management
+  # Zookeeper
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
     container_name: zookeeper
@@ -10,7 +10,7 @@ services:
     ports:
       - "2181:2181"
 
-  # Kafka service for message broker
+  # Kafka
   kafka:
     image: confluentinc/cp-kafka:latest
     container_name: kafka
@@ -20,12 +20,12 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092  # Use service name for inter-service communication
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     ports:
       - "9092:9092"
 
-  # TimescaleDB service for time-series database
+  # TimescaleDB
   timescaledb:
     image: timescale/timescaledb-ha:pg17
     container_name: timescaledb
@@ -37,7 +37,17 @@ services:
       - "5432:5432"
     volumes:
       - timescaledb_data:/var/lib/postgresql/data
-      - ./db-init:/docker-entrypoint-initdb.d/  # Mount initialization scripts
+
+  # db-init service (runs 01_filldb.py after TimescaleDB is ready)
+  db-init:
+    build:
+      context: ./backend
+      dockerfile: db-init.Dockerfile
+    container_name: db_init
+    depends_on:
+      - timescaledb
+    # This will exit once 01_filldb.py completes
+    restart: "no"
 
   # Backend service
   backend:
@@ -48,31 +58,78 @@ services:
     depends_on:
       - kafka
       - timescaledb
+      - db-init  # So it only starts after DB is initialized
     environment:
-      # Environment variables for backend
       DATABASE_URL: postgres://postgres:postgresso@timescaledb:5432/postgres
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      # Add other necessary environment variables
     ports:
-      - "8000:8000"  # Adjust based on your backend port
+      - "8000:8000"
     volumes:
-      - ./backend:/app  # Optional: for live code reload during development
+      - ./backend:/app  # optional for dev
 
   # Frontend service
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile 
     container_name: frontend
     depends_on:
-      - backend  # Ensure backend starts before frontend if necessary
+      - backend
     environment:
-      # Environment variables for frontend, if any
-      REACT_APP_API_URL: http://localhost:8000  # Adjust based on your setup
+      REACT_APP_API_URL: http://localhost:3000
     ports:
-      - "3000:80"  # Map Nginx port 80 to host port 3000
+      - "3000:80"
     volumes:
-      - ./frontend:/app  # Optional: for live code reload during development
+      - ./frontend:/app  # optional for dev
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT
+    command: >
+      mlflow server 
+        --backend-store-uri $MLFLOW_BACKEND_STORE_URI 
+        --default-artifact-root $MLFLOW_DEFAULT_ARTIFACT_ROOT
+        --host 0.0.0.0
+        --port 5000
+    volumes:
+      - ./mlflow_volume:/mlruns
+
+  # train:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: train.Dockerfile 
+  #   depends_on:
+  #     - timescaledb
+  #     - mlflow
+  #     - db-init
+  #   container_name: training
+  #   volumes:
+  #     - ./mlflow_volume:/mlruns
+  #   # This will run train_pipeline.py once and then exit
+  #   restart: "no"
+
+  inference:
+    build:
+      context: ./backend
+      dockerfile: inference.Dockerfile  # or reuse train.Dockerfile + override CMD
+    container_name: inference
+    volumes:
+      - ./mlflow_volume:/mlruns
+    depends_on:
+      - timescaledb
+      - mlflow
+      - db-init
+    environment:
+      DATABASE_URL: postgres://postgres:postgresso@timescaledb:5432/postgres
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # If your inference code needs to see MLflow...
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    # We want this container to run once and exit:
+    restart: "no"
 
 volumes:
   timescaledb_data:

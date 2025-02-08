@@ -145,26 +145,54 @@ class ARIMATimeSeriesModel(BaseTimeSeriesModel):
             print(f"Failed to fit ARIMA model: {e}")
             self.model = None
 
-    def evaluate(self, df: pd.DataFrame, **kwargs) -> float:
+    def evaluate(self, df: pd.DataFrame, steps: int = None) -> float:
         """
-        Evaluate the trained ARIMA model on the test set.
-
-        Args:
-            df (pd.DataFrame): The test DataFrame with a DateTime index and 'value' column.
-
-        Returns:
-            float: Mean Squared Error of the predictions.
+        Evaluate the trained ARIMA model on a test set.
+        If steps is specified, forecast exactly that many periods from the start.
+        Otherwise, just forecast len(df) periods.
         """
         if self.model is None:
             raise ValueError("Model has not been trained. Call train() first.")
 
         y_true = df["value"].values
         exog = self._create_exog(df)
+        n_periods = steps if steps is not None else len(y_true)
 
         try:
-            preds = self.model.predict(n_periods=len(y_true), exogenous=exog)
-            mse = mean_squared_error(y_true, preds)
+            preds = self.model.predict(n_periods=n_periods, exogenous=exog)
+            # If you're only comparing the first 30 predicted points to your test set:
+            mse = mean_squared_error(y_true[:n_periods], preds)
             return mse
         except Exception as e:
             print(f"Failed to predict using ARIMA model: {e}")
             return float("inf")
+
+    def predict(self, df: pd.DataFrame = None, steps: int = 1) -> np.ndarray:
+        """
+        Predict 'steps' time steps into the future.
+
+        Args:
+            steps (int): Number of future time steps to forecast.
+            future_df (pd.DataFrame, optional): A DataFrame with a DateTime index
+                covering the future period. Needed if using exogenous features
+                for those future steps.
+
+        Returns:
+            np.ndarray: The forecasted values for the specified horizon.
+        """
+        if self.model is None:
+            raise ValueError("Model has not been trained. Call train() first.")
+
+        # Build exogenous features for the future period if provided
+        if self.use_exogenous and df is not None:
+            exog_future = self._create_exog(df)
+        else:
+            exog_future = None
+
+        try:
+            # pm.ARIMA allows you to predict n_periods ahead, optionally with exogenous
+            preds = self.model.predict(n_periods=steps, exogenous=exog_future)
+            return preds
+        except Exception as e:
+            print(f"Failed to forecast {steps} steps ahead with ARIMA: {e}")
+            return np.array([])

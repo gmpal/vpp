@@ -6,6 +6,8 @@ FROM node:16-alpine AS build
 # Set working directory
 WORKDIR /app
 
+ENV REACT_APP_API_BASE_URL=http://localhost:8000/api
+
 # Install dependencies
 COPY package.json package-lock.json ./
 RUN npm install

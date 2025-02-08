@@ -294,3 +294,69 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         except Exception as e:
             print(f"Failed to predict using TFT model: {e}")
             return float("inf")
+
+    def predict(self, df: pd.DataFrame, forecast_horizon: int = 6) -> pd.DataFrame:
+        """
+        Generate a forecast from the trained TFT model on new data.
+
+        Args:
+            df (pd.DataFrame): A DataFrame with a DateTime index and 'value' column
+                            (or no 'value' if purely future).
+            forecast_horizon (int): How many time steps to predict forward.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing the predicted values
+                        (and optionally the datetime index).
+        """
+
+        if self.model is None:
+            raise ValueError("Model has not been trained. Call train() first.")
+
+        # 1) Convert df into Darts TimeSeries objects
+        ts, past_covariates, future_covariates = self._create_features(df)
+
+        # 2) Scale them using the same scalers fitted in train()
+        if self.target_scaler is not None:
+            ts_scaled = self.target_scaler.transform(ts)
+        else:
+            ts_scaled = ts
+
+        if self.past_covariate_scaler is not None and past_covariates is not None:
+            past_covariates_scaled = self.past_covariate_scaler.transform(
+                past_covariates
+            )
+        else:
+            past_covariates_scaled = None
+
+        if self.future_covariate_scaler is not None and future_covariates is not None:
+            future_covariates_scaled = self.future_covariate_scaler.transform(
+                future_covariates
+            )
+        else:
+            future_covariates_scaled = None
+
+        # 3) Predict
+        # We can specify 'n=forecast_horizon' if we want a fixed-length forecast
+        # or we can do 'n=len(ts_scaled)' if the new data covers exactly that many timesteps.
+        try:
+            preds_scaled = self.model.predict(
+                n=forecast_horizon,
+                series=ts_scaled,
+                past_covariates=past_covariates_scaled,
+                future_covariates=future_covariates_scaled,
+            )
+        except Exception as e:
+            print(f"Failed to forecast with TFT model: {e}")
+            return pd.DataFrame()
+
+        # 4) Inverse-transform predictions to original scale (if desired)
+        if self.target_scaler is not None:
+            preds = self.target_scaler.inverse_transform(preds_scaled)
+        else:
+            preds = preds_scaled
+
+        # Convert Darts TimeSeries back to a pandas DataFrame
+        df_preds = preds.pd_dataframe()
+        df_preds.columns = ["prediction"]
+
+        return df_preds

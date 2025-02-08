@@ -12,7 +12,7 @@ node_modules
 *.tmp
 
 # Ignore logs
-backend/airflow-data/logs/
+airflow-data/logs/
 
 # Exclude .env file TODO: we keep it temporarily but its unsafe
-.env
+#.env

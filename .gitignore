@@ -12,6 +12,8 @@ __pycache__/
 data/
 airflow-data/
 mlruns/
+mlflow_volume/
+backend/node_modules/
 
 # Distribution / packaging
 .Python

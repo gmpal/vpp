@@ -22,16 +22,16 @@ psycopg2
 psycopg2-binary
 
 mlflow 
-evidently 
+# evidently 
 optuna 
-tensorflow 
-keras
-torch
-pytorch-lightning
-pytorch-forecasting
-apache-airflow
+# tensorflow 
+# keras
+# torch
+# pytorch-lightning
+# pytorch-forecasting
+# apache-airflow
 
 pmdarima 
 plotly
-darts
+# darts
 asyncpg
