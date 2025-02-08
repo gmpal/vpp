@@ -15,6 +15,8 @@ mlruns/
 mlflow_volume/
 backend/node_modules/
 
+logs 
+
 # Distribution / packaging
 .Python
 build/
