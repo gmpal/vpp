@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y libpq-dev gcc git
 WORKDIR /app
 
 # Set env variables for DB or MLflow if needed
-ENV TIMESCALEDB_HOST=172.31.5.84
+ENV TIMESCALEDB_HOST=172.31.32.54
 ENV POSTGRES_PORT=5432
 ENV POSTGRES_DB=postgres
 ENV POSTGRES_USER=gmpal

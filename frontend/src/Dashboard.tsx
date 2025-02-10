@@ -6,6 +6,8 @@ import {
     addNewSource,
 } from './api.ts';
 
+import BatteryManagement from './BatteryManagement.tsx';
+
 import {
     Container,
     Typography,
@@ -120,6 +122,11 @@ const Dashboard: React.FC = () => {
                         </Paper>
                     </Grid>
                 </Grid>
+                <Container maxWidth="lg" sx={{ py: 4 }}>
+                    {/* Battery Management */}
+                    <BatteryManagement />
+
+                </Container >
             </Box>
 
             {/* Snackbar for Notifications */}

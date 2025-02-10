@@ -15,12 +15,16 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
 
     solar_ids = query_source_ids("solar")
     df_solar_total = None
+    reference_index = None
     for s_id in solar_ids:
         df_solar = load_forecasted_data("solar", source_id=s_id, start=start, end=end)
         if df_solar_total is None:
             df_solar_total = df_solar.copy()
+            reference_index = df_solar_total.index
         else:
             # Sum the 'value' columns
+            # reindex
+            df_solar.index = reference_index
             df_solar_total["yhat"] = df_solar_total["yhat"].add(
                 df_solar["yhat"], fill_value=0
             )
@@ -33,8 +37,11 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
         df_wind = load_forecasted_data("wind", source_id=w_id, start=start, end=end)
         if df_wind_total is None:
             df_wind_total = df_wind.copy()
+            reference_index = df_wind_total.index
         else:
             # Sum the 'value' columns
+            # reindex
+            df_wind.index = reference_index
             df_wind_total["yhat"] = df_wind_total["yhat"].add(
                 df_wind["yhat"], fill_value=0
             )
@@ -52,18 +59,19 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
     df_load = df_load["load"].to_frame()
     df_market = df_market["price"].to_frame()
 
+    reference_index = df_solar_total.index
+    df_wind_total.index = reference_index
+    df_load.index = reference_index
+    df_market.index = reference_index
+
     # 1d) Combine everything into one DataFrame
     # We do an outer join on index (time), fill missing with 0
-    df = (
-        df_solar_total.join(df_wind_total, how="outer")
-        .join(df_load, how="outer")
-        .join(df_market, how="outer")
-        .sort_index()
-    )
+    df = pd.concat([df_solar_total, df_wind_total, df_load, df_market], axis=1)
     # Ensure we have an hourly frequency in time
     # (adjust if your data is already guaranteed to be hourly)
     # TODO: adjust when moving back to hourr
     # df = df.asfreq("h", fill_value=0)
+    print("The shape of the data before optimization is: ", df.shape)
     return df
 
 
@@ -103,10 +111,14 @@ def optimize(
     # 1a) Aggregate all solar
     df = load_optimization_data(start=start, end=end)
 
+    print("Forecast data sample:")
+    print(df.head())
+    print("Missing values in forecast data:", df.isna().sum())
+
     # Our time steps are simply enumerated from 0..N-1
     time_index = df.index
     time_steps = range(len(time_index))
-
+    print("The time steps of the data is: ", time_steps)
     # --------------------------------------------------------------------------
     # 2. Set up the PuLP problem
     # --------------------------------------------------------------------------
@@ -131,6 +143,11 @@ def optimize(
 
     # Create variables for each battery
     for b_idx, bat in enumerate(batteries):
+        print(
+            f"Battery {bat.battery_id}: max_charge_kW={bat.max_charge_kW}, "
+            f"max_discharge_kW={bat.max_discharge_kW}, capacity_kWh={bat.capacity_kWh}, "
+            f"current_soc_kWh={bat.current_soc_kWh}, round_trip_efficiency={bat.round_trip_efficiency}"
+        )
         # We'll label them based on battery ID or an index
         b_label = bat.battery_id if hasattr(bat, "battery_id") else f"bat{b_idx}"
 
@@ -256,6 +273,7 @@ def optimize(
     df_results["status"] = status
     df_results["total_cost"] = pulp.value(total_cost)
 
+    print("The shape of the data after optimization is: ", df_results.shape)
     # --------------------------------------------------------------------------
     # 8. Optionally update each Battery's final SoC or store states in the database
     #    if desired. For example:

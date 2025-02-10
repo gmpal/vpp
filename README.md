@@ -1,163 +1,208 @@
-# Virtual Power Plant (VPP) Project
+## Project Description
+
+This project simulates a **Virtual Power Plant (VPP)** that leverages synthetic data and modular microservices to emulate a real-world distributed energy system. The core idea is to generate synthetic data representing various energy sources and grid parameters, then process, forecast, and optimize energy management decisions in near real time.
+
+### Key Components
+
+1. **Synthetic Data Generation & Ingestion:**
+   - **Synthetic Data Sources:**  
+     Using specialized libraries, synthetic weather data (for solar and wind generation), grid load, and market price data are generated to mimic real operating conditions.
+   - **Data Streaming & Storage:**  
+     A dedicated **db-init** service stores a portion of the generated files locally. The remaining data is streamed in real time via Kafka—each source having its own producer—to simulate live data feeds. A centralized consumer then ingests this data and writes it into a TimescaleDB database for further processing.
+
+2. **Forecasting Pipeline:**
+   - **Training Pipeline:**  
+     Scheduled to run every 60 minutes, the training pipeline performs time series cross-validation on the incoming data. It compares multiple univariate machine learning models for each data source and selects the best-performing model, optionally tuning hyperparameters. All experiments and model performance metrics are logged in MLflow for tracking and reproducibility.
+   - **Inference Pipeline:**  
+     Running every 5 minutes, the inference pipeline retrieves the best model for each source and generates 30-step ahead forecasts. This simulates a scenario where, for instance, a forecast generated at 6 pm is used to predict the day-ahead market conditions.
+
+3. **Modularity & Extensibility:**
+   - **Adding New Sources:**  
+     The frontend allows users to manually add new data sources, making it easy to extend the system.
+   - **Battery Module:**  
+     A separate module is dedicated to managing batteries. Users can add battery configurations that are then integrated into the overall optimization process.
+   - **Additional Streams:**  
+     In addition to generation data, the system simulates grid load and market price streams to reflect broader system dynamics.
+
+4. **Optimization Module:**
+   - Using PuLP, the system performs a linear optimization that combines forecast data with battery state information. The optimization module determines the best strategy for the next 30 time steps—providing decisions on grid buying/selling as well as battery charge/discharge—to maximize efficiency and profitability for the VPP.
+
+The overall architecture is fully containerized using Docker, enabling scalable deployments on AWS and simplifying local development with tools like Docker Compose.
+
+---
+
+## README.md
+
+```markdown
+# Virtual Power Plant (VPP) Simulation System
+
+A modular, containerized microservices system for simulating a Virtual Power Plant. The project integrates synthetic data generation, real-time data streaming, forecasting pipelines, and an optimization module to emulate energy management decisions for distributed energy resources.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Components](#components)
+  - [Synthetic Data Generation & Ingestion](#synthetic-data-generation--ingestion)
+  - [Forecasting Pipeline](#forecasting-pipeline)
+  - [Optimization Module](#optimization-module)
+  - [Frontend & Battery Management](#frontend--battery-management)
+- [Prerequisites](#prerequisites)
+- [Installation and Setup](#installation-and-setup)
+- [Usage](#usage)
+- [Deployment](#deployment)
+- [Troubleshooting](#troubleshooting)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Overview
-This project simulates a Virtual Power Plant (VPP) system, including synthetic data generation, forecasting, optimization, and database management. The system models energy generation from solar and wind sources, energy consumption (load), and market prices. It integrates with a Kafka-based communication pipeline for real-time data streaming and supports optimization of battery usage to minimize costs.
 
-## Features
+This project simulates a Virtual Power Plant that uses synthetic data to mimic real-time energy production and consumption. The system streams generated data via Kafka to a centralized TimescaleDB and processes it through dedicated forecasting pipelines. The forecasts are then fed into an optimization module (using PuLP) to determine optimal energy management strategies—deciding when to buy, sell, charge, or discharge batteries.
 
-1. **Synthetic Data Generation**
-   - Generate weather data (e.g., solar irradiance, wind speed, temperature) for wind and photovoltaic (PV) power generation.
-   - Simulate renewable energy generation (solar and wind) and energy consumption (load) with realistic patterns and random noise.
-   - Create synthetic market price data.
+## Architecture
 
-2. **Forecasting**
-   - Use the Prophet model to forecast renewable generation, load, and market prices.
-   - Perform hyperparameter optimization for forecasting models using Optuna.
-   - Save forecasts to the database for later use.
+The system is built as a collection of Dockerized microservices:
 
-3. **Battery Modeling**
-   - Simulate battery behavior, including charging, discharging, and tracking state-of-charge (SOC).
-   - Enforce constraints such as maximum charge/discharge rates and round-trip efficiency.
+- **db-init Service:**  
+  Initializes the database, stores part of the synthetic data locally, and streams the remaining data to simulate real-time ingestion via Kafka.
 
-4. **Optimization**
-   - Optimize battery operations to minimize costs by leveraging forecasted data.
-   - Use PuLP to solve linear programming problems for battery scheduling, grid interactions, and renewable energy usage.
+- **Backend Service:**  
+  Handles API requests, integrates with MLflow for experiment tracking, and communicates with the database and Kafka.
 
-5. **Database Integration**
-   - Manage data for renewable energy sources, load, market prices, and forecasts using TimescaleDB.
-   - Support efficient data retrieval and storage with hypertables for time-series data.
+- **Frontend Service:**  
+  A user interface built with React, allowing manual addition of data sources and batteries.
 
-6. **Kafka Communication**
-   - Stream data from producers (renewables, load, market) to Kafka topics.
-   - Consume data from Kafka and store it in the database for processing.
+- **Forecasting Pipelines:**  
+  - **Training Pipeline:** Runs every 60 minutes to perform time series cross-validation, compare multiple models, and log results in MLflow.
+  - **Inference Pipeline:** Runs every 5 minutes to perform 30-step ahead forecasts for the day-ahead market (e.g., forecasts generated at 6 pm).
 
-7. **Model Training**
-   - Train and compare models for forecasting (Prophet, ARIMA, Random Forest, and N-BEATS).
-   - Use MLflow to track experiments, metrics, and artifacts.
+- **Optimization Module:**  
+  Uses forecasted data and battery states to perform linear optimization with PuLP, outputting strategies for grid interactions and battery management over the next 30 time steps.
 
-## File Structure
+## Components
 
-### 1. Synthetic Data Generation
-- **`generation.py`**
-  - Functions to generate weather data, renewable generation (wind, PV), synthetic load, and market prices.
-  - Supports output to CSV for use by Kafka producers.
+### Synthetic Data Generation & Ingestion
 
-### 2. Forecasting
-- **`forecasting.py`**
-  - Load data from the database and use the Prophet model to forecast future values.
-  - Save forecasts to the database.
+- **Data Generation:**  
+  Synthetic weather data, wind and solar generation, grid load, and market prices are generated using libraries like `pvlib` and `windpowerlib`. Each data source is uniquely identified.
+  
+- **Data Ingestion:**  
+  The `db-init` service partially stores the generated files and streams the remainder via Kafka (with one producer per source). A centralized consumer writes the incoming data into a TimescaleDB database.
 
-- **`train_forecast.py`**
-  - Train models (Prophet, ARIMA, Random Forest, N-BEATS) with hyperparameter optimization.
-  - Evaluate models and log results to MLflow.
+### Forecasting Pipeline
 
-### 3. Battery Modeling
-- **`battery.py`**
-  - Battery class to simulate charging, discharging, and SOC tracking.
-  - Includes efficiency and capacity constraints.
+- **Training Pipeline:**  
+  - Performs time series cross-validation.
+  - Compares multiple univariate machine learning models (one per source).
+  - Optionally tunes hyperparameters.
+  - Logs all experiments and metrics in MLflow.
+  - Scheduled to run every 60 minutes.
 
-### 4. Optimization
-- **`optimization.py`**
-  - Optimize battery scheduling using PuLP to minimize costs.
-  - Combine forecasted data with battery operations to determine optimal usage.
+- **Inference Pipeline:**  
+  - Retrieves the best-performing model for each source.
+  - Generates 30-step ahead forecasts (e.g., for the next day-ahead market starting at 6 pm).
+  - Scheduled to run every 5 minutes.
 
-### 5. Database Management
-- **`db.py`**
-  - Functions to interact with TimescaleDB for storing and retrieving data.
-  - Manage tables for renewables, load, market prices, and forecasts.
-  - Reset tables and store battery states.
+### Optimization Module
 
-### 6. Kafka Communication
-- **`communication.py`**
-  - Produce data from CSV files to Kafka topics for streaming.
-  - Consume data from Kafka topics and store it in the database.
+- **Purpose:**  
+  Uses forecast data alongside battery states and market information to compute the optimal strategy using PuLP.
+- **Output:**  
+  Provides recommendations for grid buy/sell actions and battery charge/discharge schedules over the next 30 time steps.
+- **Key Features:**  
+  - Integrates forecasts from renewable sources, grid load, and market price.
+  - Supports individual battery management.
+  - Easily extensible for additional constraints or decision variables.
 
-### 7. Source Management
-- **`sources.py`**
-  - Create new data sources (wind or PV) and optionally connect them to Kafka producers.
+### Frontend & Battery Management
 
-### 8. Forecast and Save
-- **`forecast_and_save.py`**
-  - Generate forecasts using the Prophet model and save results to the database.
+- **Frontend:**  
+  A React-based UI that allows users to manually add new energy sources or battery configurations.
+- **Battery Module:**  
+  Manages battery information and integrates with the optimization module to ensure accurate state-of-charge tracking and scheduling.
+
+## Prerequisites
+
+- **Docker & Docker Compose:** For containerizing and orchestrating services.
+- **Python 3.8/3.9:** For backend services and forecasting pipelines.
+- **Node.js:** For building and running the frontend.
+- **AWS Account:** For deploying services using AWS ECS, ECR, etc. (if desired).
+
+## Installation and Setup
+
+1. **Clone the Repository:**
+   ```bash
+   git clone https://github.com/your-username/your-vpp-repo.git
+   cd your-vpp-repo
+   ```
+
+2. **Build Docker Images:**
+   Build each service individually. For example, to build the backend service:
+   ```bash
+   cd backend
+   docker build -t vpp-backend .
+   ```
+
+3. **Run with Docker Compose (Optional):**
+   If a `docker-compose.yml` file is provided, you can start all services together:
+   ```bash
+   docker-compose up --build
+   ```
 
 ## Usage
 
-### Prerequisites
-- Python 3.8+
-- Kafka cluster (for data streaming)
-- TimescaleDB (for time-series data management)
-- Required Python packages (install using `requirements.txt`)
+- **Data Ingestion:**
+  Run the `db-init` container to initialize the database and start streaming synthetic data.
+  ```bash
+  docker run --env-file .env vpp-db-init
+  ```
 
-### Steps
+- **Backend API:**
+  Start the backend API service:
+  ```bash
+  docker run -p 8000:8000 --env-file .env vpp-backend
+  ```
 
-1. **Set Up the Environment**
-   - Install dependencies using:
-     ```bash
-     pip install -r requirements.txt
-     ```
-   - Configure database and Kafka settings in `config.ini`.
+- **Frontend UI:**
+  Launch the frontend to add sources or battery configurations:
+  ```bash
+  docker run -p 80:80 vpp-frontend
+  ```
 
-2. **Generate Synthetic Data**
-   - Run `generation.py` to generate weather, renewable generation, load, and market price data.
-   - Example:
-     ```bash
-     python generation.py
-     ```
+- **Forecasting Pipelines:**
+  - **Training Pipeline:**  
+    Runs every 60 minutes to update models.
+  - **Inference Pipeline:**  
+    Runs every 5 minutes to provide updated forecasts.
 
-3. **Run Kafka Producers and Consumers**
-   - Use `communication.py` to produce data to Kafka topics.
-   - Example:
-     ```bash
-     python communication.py
-     ```
+- **Optimization:**
+  The optimization module (using PuLP) processes forecasted data and battery states to output an optimal strategy for grid interactions and battery management.
 
-4. **Train Models**
-   - Use `train_forecast.py` to train forecasting models and log results to MLflow.
-   - Example:
-     ```bash
-     python train_forecast.py
-     ```
+## Deployment
 
-5. **Optimize Battery Operations**
-   - Run `optimization.py` to determine optimal battery schedules.
-   - Example:
-     ```bash
-     python optimization.py
-     ```
+- **AWS ECS:**  
+  Package each service as an ECS task for scalable, cloud-based deployment.
+- **Load Balancers:**  
+  Use ALBs to route traffic to the appropriate services (e.g., frontend on port 80, backend on port 8000).
+- **Environment Variables:**  
+  Configure through ECS task definitions or AWS Secrets Manager.
 
-6. **Forecast and Save**
-   - Use `forecast_and_save.py` to generate and save forecasts to the database.
-   - Example:
-     ```bash
-     python forecast_and_save.py
-     ```
+## Troubleshooting
 
-## Key Components
+- **Logs:**  
+  Check container logs to diagnose issues:
+  ```bash
+  docker logs <container-id>
+  ```
+- **Environment Variables:**  
+  Ensure all required environment variables are correctly set in your `.env` file or deployment configuration.
+- **Service Communication:**  
+  Verify network settings so that all services can resolve and communicate with one another (e.g., TimescaleDB, Kafka, MLflow).
 
-### Configuration
-- **`config.ini`**
-  - Specify database credentials, Kafka settings, and generation parameters.
+## Contributing
 
-### Database Schema
-- Tables for renewable sources, load, market prices, and forecasts.
-- Hypertables for efficient time-series storage.
-
-### Kafka Topics
-- **`solar-topic`**: Solar power data.
-- **`wind-topic`**: Wind power data.
-- **`load-topic`**: Load data.
-- **`market-topic`**: Market price data.
-
-## Future Work
-- Integrate real-world data sources.
-- Implement additional forecasting models.
-- Enhance optimization with multi-objective approaches.
-- Deploy on cloud platforms for scalability.
-
-## Contributors
-- Author: [Your Name]
-- Contact: [Your Email]
+Contributions are welcome! Please open an issue or submit a pull request with your suggestions, improvements, or bug fixes.
 
 ## License
-This project is licensed under the MIT License. See the LICENSE file for details.
 
+This project is licensed under the [MIT License](LICENSE).

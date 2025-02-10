@@ -13,4 +13,5 @@ matplotlib
 optuna
 regex
 plotly
+kafka-python
 boto3

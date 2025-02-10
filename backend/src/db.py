@@ -1,17 +1,150 @@
 import configparser
 import psycopg2
-from psycopg2.extras import execute_values
-import pandas as pd
-from src.battery import Battery
-import csv
-
 import os
+import json
+import time
 import pandas as pd
-from typing import Optional
+from kafka import KafkaProducer
+
+from psycopg2.extras import execute_values
+
+from multiprocessing import Process
+from src.battery import Battery
 
 
 RENEWABLES = ["solar", "wind"]  # scalable for more renewables
 OTHER_DATASETS = ["load", "market"]
+
+
+def reset_all_forecast_tables():
+    """
+    Drops and recreates all forecast tables for renewable sources (as defined in RENEWABLES),
+    as well as for load and market data. Each table is converted into a hypertable.
+    """
+    conn = _connect()
+    cursor = conn.cursor()
+
+    queries = []
+
+    # Reset forecast tables for each renewable (e.g., solar_forecast, wind_forecast, etc.)
+    for renewable in RENEWABLES:
+        renewable_forecast_query = f"""
+            DROP TABLE IF EXISTS {renewable}_forecast;
+            CREATE TABLE {renewable}_forecast (
+                time TIMESTAMPTZ NOT NULL,
+                source_id VARCHAR(50),
+                trend DOUBLE PRECISION,
+                yhat_lower DOUBLE PRECISION,
+                yhat_upper DOUBLE PRECISION,
+                trend_lower DOUBLE PRECISION,
+                trend_upper DOUBLE PRECISION,
+                additive_terms DOUBLE PRECISION,
+                additive_terms_lower DOUBLE PRECISION,
+                additive_terms_upper DOUBLE PRECISION,
+                daily DOUBLE PRECISION,
+                daily_lower DOUBLE PRECISION,
+                daily_upper DOUBLE PRECISION,
+                multiplicative_terms DOUBLE PRECISION,
+                multiplicative_terms_lower DOUBLE PRECISION,
+                multiplicative_terms_upper DOUBLE PRECISION,
+                yhat DOUBLE PRECISION
+            );
+            SELECT create_hypertable('{renewable}_forecast', 'time');
+        """
+        queries.append(renewable_forecast_query)
+
+    # Reset the forecast table for load
+    load_forecast_query = """
+        DROP TABLE IF EXISTS load_forecast;
+        CREATE TABLE load_forecast (
+            time TIMESTAMPTZ NOT NULL,
+            trend DOUBLE PRECISION,
+            yhat_lower DOUBLE PRECISION,
+            yhat_upper DOUBLE PRECISION,
+            trend_lower DOUBLE PRECISION,
+            trend_upper DOUBLE PRECISION,
+            additive_terms DOUBLE PRECISION,
+            additive_terms_lower DOUBLE PRECISION,
+            additive_terms_upper DOUBLE PRECISION,
+            daily DOUBLE PRECISION,
+            daily_lower DOUBLE PRECISION,
+            daily_upper DOUBLE PRECISION,
+            multiplicative_terms DOUBLE PRECISION,
+            multiplicative_terms_lower DOUBLE PRECISION,
+            multiplicative_terms_upper DOUBLE PRECISION,
+            yhat DOUBLE PRECISION
+        );
+        SELECT create_hypertable('load_forecast', 'time');
+    """
+    queries.append(load_forecast_query)
+
+    # Reset the forecast table for market
+    market_forecast_query = """
+        DROP TABLE IF EXISTS market_forecast;
+        CREATE TABLE market_forecast (
+            time TIMESTAMPTZ NOT NULL,
+            trend DOUBLE PRECISION,
+            yhat_lower DOUBLE PRECISION,
+            yhat_upper DOUBLE PRECISION,
+            trend_lower DOUBLE PRECISION,
+            trend_upper DOUBLE PRECISION,
+            additive_terms DOUBLE PRECISION,
+            additive_terms_lower DOUBLE PRECISION,
+            additive_terms_upper DOUBLE PRECISION,
+            daily DOUBLE PRECISION,
+            daily_lower DOUBLE PRECISION,
+            daily_upper DOUBLE PRECISION,
+            multiplicative_terms DOUBLE PRECISION,
+            multiplicative_terms_lower DOUBLE PRECISION,
+            multiplicative_terms_upper DOUBLE PRECISION,
+            yhat DOUBLE PRECISION
+        );
+        SELECT create_hypertable('market_forecast', 'time');
+    """
+    queries.append(market_forecast_query)
+
+    # Execute all queries in sequence
+    for query in queries:
+        cursor.execute(query)
+        conn.commit()
+        print("Executed query:", query.split("\n")[1].strip(), flush=True)
+
+    cursor.close()
+    conn.close()
+    print("All forecast tables reset.", flush=True)
+
+
+def kafka_produce(producer_info: tuple, sleeping_time: int = 60):
+    """
+    TODO: temporarely duplicated to avoid circular import
+    Produces messages to a Kafka topic.
+    Args:
+        producer_info (tuple): A tuple containing the topic name (str), source ID (str),
+                               and a DataFrame (pandas.DataFrame) with the data to be sent.
+        sleeping_time (int): The time to sleep between sending messages. Defaults to 60. Units: seconds.
+    The DataFrame should have a datetime index and a single column of values. Each row in the
+    DataFrame will be sent as a separate message to the specified Kafka topic.
+    The function serializes the message as JSON and sends it to the Kafka topic with a delay
+    of 5 seconds between each message.
+    Example:
+        producer_info = ("my_topic", "source_1", df)
+        kafka_produce(producer_info)
+    """
+
+    topic, source_id, df = producer_info
+
+    producer = KafkaProducer(
+        bootstrap_servers=os.environ.get("KAFKA_BOOTSTRAP_SERVERS"),
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+    )
+
+    for _, row in df.iterrows():
+        message = {"source_id": source_id, "timestamp": row.name, "data": row.values[0]}
+        producer.send(topic, value=message, partition=0)
+        print(
+            f"Message from {source_id} at {row.name} sent to topic {topic} with value {row.values[0]}"
+        )
+        time.sleep(sleeping_time)
 
 
 def _connect():
@@ -474,20 +607,21 @@ def save_to_db(topic: str, timestamp: pd.DatetimeIndex, source_id: str, value: f
 
     conn = _connect()
     cursor = conn.cursor()
-
+    print(f"Saving to {topic} table")
     table = topic.split("-")[0]
-
+    print(f"Table: {table}")
     if table in RENEWABLES:
         query = f"INSERT INTO {table} (time, source_id, value) VALUES (%s, %s, %s)"
         cursor.execute(query, (timestamp, source_id, value))
     else:  # load and market have no source_id
         query = f"INSERT INTO {table} (time, value) VALUES (%s, %s)"
         cursor.execute(query, (timestamp, value))
-
+    print(f"Data point saved to {table} table")
     conn.commit()
 
     cursor.close()
     conn.close()
+    print("Connection closed")
 
 
 def save_single_forecasts_to_db(source, source_id, forecasted_df):
@@ -900,7 +1034,7 @@ def query_source_ids(source: str):
 #         print(f"Inserted {len(df)} rows from file '{filename}' into table '{source}'.")
 
 
-def dump_csv_folder_to_db(folder_path: str):
+def dump_csv_folder_to_db_and_start_streaming(folder_path: str):
     """
     Loops over all .csv files in `folder_path`, each named "<source_id>_<source>.csv".
     We assume:
@@ -927,6 +1061,10 @@ def dump_csv_folder_to_db(folder_path: str):
         #    The index is your timestamp.
         df = pd.read_csv(full_path, index_col=0)
 
+        # first 10% of the data will be stored in the database
+        df_to_store = df.iloc[: int(len(df) * 0.1)]
+        df_to_stream = df.iloc[int(len(df) * 0.1) :]
+
         # 3. Decide table name and source_id usage
         #    - If 'source' is in RENEWABLES, we use that as the table name, else it might be "load" or "market"
         table_name = source  # e.g. "solar", "wind", "load", "market"
@@ -936,7 +1074,7 @@ def dump_csv_folder_to_db(folder_path: str):
 
         # We'll build a list of tuples
         data_tuples = []
-        for i, row in df.iterrows():
+        for i, row in df_to_store.iterrows():
             t = i
             val = float(row.values[0]) if pd.notnull(row.values[0]) else None
 
@@ -970,3 +1108,9 @@ def dump_csv_folder_to_db(folder_path: str):
         print(
             f"Inserted {len(data_tuples)} rows from '{filename}' into table '{table_name}'."
         )
+
+        new_producer_bundle = (source, source_id, df_to_stream)
+        new_producer_process = Process(
+            target=kafka_produce, args=(new_producer_bundle, 60)
+        )
+        new_producer_process.start()

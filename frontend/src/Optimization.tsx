@@ -69,24 +69,8 @@ function OptimizationPage() {
 
     return (
         <div style={styles.container}>
-            <h1>Battery Optimization</h1>
+            <h1>Optimization</h1>
             <div style={styles.controls}>
-                <label>
-                    Start Time:
-                    <input
-                        type="datetime-local"
-                        value={start}
-                        onChange={(e) => setStart(e.target.value)}
-                    />
-                </label>
-                <label>
-                    End Time:
-                    <input
-                        type="datetime-local"
-                        value={end}
-                        onChange={(e) => setEnd(e.target.value)}
-                    />
-                </label>
                 <button onClick={handleOptimize} style={styles.button}>
                     Run Optimization
                 </button>

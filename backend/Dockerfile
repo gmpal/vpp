@@ -3,6 +3,7 @@
 # Use an official Python runtime as a parent image
 FROM python:3.8-slim
 
+
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -13,8 +14,7 @@ ENV POSTGRES_USER=postgres
 ENV POSTGRES_PASSWORD=postgresso
 ENV MLFLOW_TRACKING_URI=http://mlflow:5000
 
-ENV KAFKA_BOOTSTRAP_SERVERS=172.31.33.161:9092
-
+ENV KAFKA_BOOTSTRAP_SERVERS=kafka-service.vpp.local.vpp.local:9092
 
 # Set work directory
 WORKDIR /app
@@ -34,10 +34,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src ./src
 COPY data ./data
 COPY app.py .
+COPY create_topics.py .
+
 COPY config.ini .
 
 # Expose the port your backend runs on (e.g., 8000 for Flask/Django)
 EXPOSE 8000
 
-# Define the default command to run your backend application
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+ENTRYPOINT ["/app/entrypoint.sh"]

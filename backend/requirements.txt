@@ -18,7 +18,6 @@ pulp
 fastapi 
 uvicorn 
 
-psycopg2
 psycopg2-binary
 
 mlflow 
@@ -35,3 +34,8 @@ pmdarima
 plotly
 # darts
 asyncpg
+
+
+
+
+

@@ -6,7 +6,7 @@ FROM node:16-alpine AS build
 # Set working directory
 WORKDIR /app
 
-ENV REACT_APP_API_BASE_URL=http://localhost:8000/api
+ENV REACT_APP_API_BASE_URL=http://vpp-backend-load-balancer-205415068.eu-central-1.elb.amazonaws.com/api
 
 # Install dependencies
 COPY package.json package-lock.json ./

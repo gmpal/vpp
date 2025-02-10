@@ -23,10 +23,9 @@ def _get_server_info():
     # Read the config.ini file
     config.read("config.ini")
 
-    os.environ.get("KAFKA_BOOTSTRAP_SERVERS", config["Kafka"]["bootstrap_servers"])
-
-    # Access Kafka settings
-    return
+    bs = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", config["Kafka"]["bootstrap_servers"])
+    print("Using bootstrap servers:", bs, flush=True)
+    return bs
 
 
 def make_single_producer_info(root: str, source_type: str, source_id: str):
@@ -41,7 +40,7 @@ def make_single_producer_info(root: str, source_type: str, source_id: str):
                with the data read from the CSV file.
     """
 
-    topic = f"{source_type}-topic"
+    topic = f"{source_type}"
     id = source_id
     df = pd.read_csv(f"{root}/{source_id}_{source_type}.csv", index_col=0)
     producer_info = (topic, id, df)
@@ -69,7 +68,7 @@ def make_producers_info(root: str = "../data/"):
 
     producers_info = [
         (
-            source.split("_")[1] + "-topic",  # topic
+            source.split("_")[1] + "",  # topic
             source.split("_")[0],  # source_id
             pd.read_csv(root + source, index_col=0),  # data
         )
@@ -80,12 +79,12 @@ def make_producers_info(root: str = "../data/"):
     producers_info.extend(
         [
             (
-                "load-topic",
+                "load",
                 None,
                 pd.read_csv(root + "synthetic_load_data.csv", index_col=0),
             ),
             (
-                "market-topic",
+                "market",
                 None,
                 pd.read_csv(root + "synthetic_market_price.csv", index_col=0),
             ),
@@ -120,7 +119,7 @@ def kafka_produce(producer_info: tuple, sleeping_time: int = 60):
 
     for _, row in df.iterrows():
         message = {"source_id": source_id, "timestamp": row.name, "data": row.values[0]}
-        producer.send(topic, value=message)
+        producer.send(topic, value=message, partition=0)
         print(
             f"Message from {source_id} at {row.name} sent to topic {topic} with value {row.values[0]}"
         )
@@ -135,10 +134,10 @@ def kafka_consume_centralized():
     and relevant details such as source ID, timestamp, and data are extracted.
     The extracted information is then saved to a database.
     Topics:
-        - "solar-topic"
-        - "wind-topic"
-        - "load-topic"
-        - "market-topic"
+        - "solar"
+        - "wind"
+        - "load"
+        - "market"
     Kafka Consumer Configuration:
         - bootstrap_servers: Obtained from _get_server_info()
         - auto_offset_reset: "earliest"
@@ -153,15 +152,16 @@ def kafka_consume_centralized():
     Note:
         - Assumes that the message value contains a "data" field holding the value(s) to be saved.
     """
-
+    bs = _get_server_info()
+    print("Using bootstrap servers:", bs, flush=True)
     consumer = KafkaConsumer(
-        "solar-topic",
-        "wind-topic",
-        "load-topic",
-        "market-topic",
-        bootstrap_servers=_get_server_info(),
+        "solar",
+        "wind",
+        "load",
+        "market",
+        bootstrap_servers=bs,
         auto_offset_reset="earliest",
-        group_id="my-group",
+        group_id="test-group",
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
     )
 
