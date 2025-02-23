@@ -112,24 +112,24 @@ services:
   #   # This will run train_pipeline.py once and then exit
   #   restart: "no"
 
-  inference:
-    build:
-      context: ./backend
-      dockerfile: inference.Dockerfile  # or reuse train.Dockerfile + override CMD
-    container_name: inference
-    volumes:
-      - ./mlflow_volume:/mlruns
-    depends_on:
-      - timescaledb
-      - mlflow
-      - db-init
-    environment:
-      DATABASE_URL: postgres://postgres:postgresso@timescaledb:5432/postgres
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-      # If your inference code needs to see MLflow...
-      MLFLOW_TRACKING_URI: http://mlflow:5000
-    # We want this container to run once and exit:
-    restart: "no"
+  # inference:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: inference.Dockerfile  # or reuse train.Dockerfile + override CMD
+  #   container_name: inference
+  #   volumes:
+  #     - ./mlflow_volume:/mlruns
+  #   depends_on:
+  #     - timescaledb
+  #     - mlflow
+  #     - db-init
+  #   environment:
+  #     DATABASE_URL: postgres://postgres:postgresso@timescaledb:5432/postgres
+  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+  #     # If your inference code needs to see MLflow...
+  #     MLFLOW_TRACKING_URI: http://mlflow:5000
+  #   # We want this container to run once and exit:
+  #   restart: "no"
 
 volumes:
   timescaledb_data:

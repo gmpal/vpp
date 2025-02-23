@@ -1,0 +1,18 @@
+# Exclude node_modules folder
+node_modules
+
+# Exclude editor-specific files
+.vscode/
+.idea/
+
+# Exclude log files
+*.log
+
+# Exclude temporary files
+*.tmp
+
+# Ignore logs
+airflow-data/logs/
+
+# Exclude .env file TODO: we keep it temporarily but its unsafe
+#.env

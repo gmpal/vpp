@@ -1,0 +1,17 @@
+pandas
+scikit-learn
+statsmodels
+prophet
+mlflow
+psycopg2-binary
+# torch
+# pytorch-lightning
+# pytorch-forecasting
+numpy==1.22.4
+pmdarima==1.8.4
+matplotlib
+optuna
+regex
+plotly
+kafka-python
+boto3

@@ -193,38 +193,7 @@ def _reset_all_tables_in_public(cursor):
 
 
 def reset_tables():
-    """
-    Resets the database tables for renewable energy sources, load, and market price.
-    This function connects to the database, drops existing tables if they exist,
-    and creates new tables for each renewable energy source defined in the RENEWABLES
-    list, as well as for load and market price data. It does the same for forecasted values.
-    It also converts these tables into hypertables using the TimescaleDB extension.
-    The tables created are:
-    - Renewable energy sources (one table per source in RENEWABLES)
-    - Renewable energy sources forecasted (one table per source in RENEWABLES)
-    - Load
-    - Load forecasted
-    - Market price
-    - Market price forecasted
-    Each table has the following columns:
-    - time: TIMESTAMPTZ (timestamp with time zone), not null
-    - source_id: VARCHAR(50) (only for renewable energy sources)
-    - value: DOUBLE PRECISION
-    For forecasted tables, the columns are:
-    - time: TIMESTAMPTZ (timestamp with time zone), not null
-    - source_id: VARCHAR(50) (only for renewable energy sources)
-    - forecast: DOUBLE PRECISION
-    - lower: DOUBLE PRECISION
-    - upper: DOUBLE PRECISION
-
-    Note:
-    - The function assumes that the `connect` function and `RENEWABLES` list are
-      defined elsewhere in the code.
-    - The function commits each query to the database immediately after execution.
-    Raises:
-    - Any exceptions raised by the database connection or cursor execution will
-      propagate up to the caller.
-    """
+    """ """
 
     conn = _connect()
     cursor = conn.cursor()
@@ -233,6 +202,23 @@ def reset_tables():
     conn.commit()
 
     queries = []
+
+    # energy sources query
+
+    # TODO: extend if needed NULL CHECK (type IN ('solar', 'wind')),
+    energy_sources_query = """
+    DROP TABLE IF EXISTS energy_sources;
+    CREATE TABLE energy_sources (
+    source_id VARCHAR(50) PRIMARY KEY,
+    type VARCHAR(50) NOT NULL CHECK (type IN ('solar', 'wind')), 
+    latitude FLOAT NOT NULL,
+    longitude FLOAT NOT NULL,
+    name VARCHAR(100), -- Optional human-readable name
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+    """
+
+    queries.append(energy_sources_query)
 
     battery_query = """
     DROP TABLE IF EXISTS batteries;
@@ -324,15 +310,6 @@ def reset_tables():
     """
 
     queries.append(load_forecast_query)
-
-    price_query = """
-    DROP TABLE IF EXISTS market;
-    CREATE TABLE market (
-        time        TIMESTAMPTZ NOT NULL,
-        value       DOUBLE PRECISION
-    );
-    SELECT create_hypertable('market', 'time');
-    """
 
     queries.append(price_query)
 
@@ -982,56 +959,6 @@ def query_source_ids(source: str):
     conn.close()
 
     return source_ids
-
-
-# def dump_csv_folder_to_db(folder_path: str):
-#     """
-#     Loops over all .csv files in `folder_path`, each named "<source_id>_<source>.csv".
-#     Each CSV has exactly one column of values (no time column).
-
-#     For each file:
-#       1. Parse filename to extract `source_id` and `source`.
-#       2. Read the single column of data.
-#       3. Generate a simple sequence of timestamps (e.g. consecutive minutes) for each row.
-#       4. Insert each row into the DB using `save_to_db(...)`.
-
-#     Parameters
-#     ----------
-#     folder_path : str
-#         Path to the folder containing CSV files.
-#     """
-
-#     for filename in os.listdir(folder_path):
-#         if not filename.endswith(".csv"):
-#             continue  # skip non-CSV files
-
-#         full_path = os.path.join(folder_path, filename)
-
-#         # 1. Parse out source_id & source
-#         #    Example filename: "0GFA4K_solar.csv"
-#         name_no_ext = filename.rsplit(".", 1)[0]  # -> "0GFA4K_solar"
-#         parts = name_no_ext.split("_", 1)  # -> ["0GFA4K", "solar"]
-#         if len(parts) != 2:
-#             print(f"Skipping {filename}: not in 'sourceid_source.csv' format.")
-#             continue
-#         source_id, source = parts
-
-#         # 2. Read CSV with one single column
-#         df = pd.read_csv(full_path, index_col=0)
-
-#         # Insert row by row into DB
-#         for i, row in df.iterrows():
-#             ts = i
-#             # assume only one columns
-#             val = str(row.values[0])
-#             if source in RENEWABLES:
-#                 # for solar / wind, pass the parsed source_id
-#                 save_to_db(source, ts, source_id, val)
-#             else:
-#                 # for load / market, pass None or ignore `source_id`
-#                 save_to_db(source, ts, None, val)
-
-#         print(f"Inserted {len(df)} rows from file '{filename}' into table '{source}'.")
 
 
 def dump_csv_folder_to_db_and_start_streaming(folder_path: str):
