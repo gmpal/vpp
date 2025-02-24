@@ -13,7 +13,7 @@ mlflow.set_tracking_uri(
 client = MlflowClient()
 
 
-from src.db import (
+from backend.src.db import (
     load_historical_data,
     save_single_forecasts_to_db,
     RENEWABLES,

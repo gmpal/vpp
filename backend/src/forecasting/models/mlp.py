@@ -7,8 +7,8 @@ from sklearn.metrics import mean_squared_error
 from sklearn.preprocessing import StandardScaler
 from typing import Dict, Any
 
-from src.models.base import BaseTimeSeriesModel
-from src.feature_engineering import create_regression_features
+from backend.src.forecasting.base import BaseTimeSeriesModel
+from backend.src.forecasting.feature_engineering import create_regression_features
 
 
 class MLPTimeSeriesModel(BaseTimeSeriesModel):

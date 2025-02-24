@@ -1,23 +1,27 @@
 import pulp
 import pandas as pd
-from typing import List, Dict
-from src.battery import Battery  # or wherever your Battery class is located
-from src.db import (
-    load_forecasted_data,
-    query_source_ids,
-)  # adapt your imports as needed
+from typing import List
+from backend.src.storage.battery import (
+    Battery,
+)  # or wherever your Battery class is located
+from backend.src.db import DatabaseManager, CrudManager
 
 # TODO: right now this is aligned with the forecasted values
 # change accordignly, if we extend the forecasting table
 
+db_manager = DatabaseManager()
+crud_manager = CrudManager(db_manager)
+
 
 def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
 
-    solar_ids = query_source_ids("solar")
+    solar_ids = crud_manager.query_source_ids("solar")
     df_solar_total = None
     reference_index = None
     for s_id in solar_ids:
-        df_solar = load_forecasted_data("solar", source_id=s_id, start=start, end=end)
+        df_solar = crud_manager.load_forecasted_data(
+            "solar", source_id=s_id, start=start, end=end
+        )
         if df_solar_total is None:
             df_solar_total = df_solar.copy()
             reference_index = df_solar_total.index
@@ -31,10 +35,12 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
     df_solar_total.rename(columns={"yhat": "solar"}, inplace=True)
 
     # 1b) Aggregate all wind
-    wind_ids = query_source_ids("wind")
+    wind_ids = crud_manager.query_source_ids("wind")
     df_wind_total = None
     for w_id in wind_ids:
-        df_wind = load_forecasted_data("wind", source_id=w_id, start=start, end=end)
+        df_wind = crud_manager.load_forecasted_data(
+            "wind", source_id=w_id, start=start, end=end
+        )
         if df_wind_total is None:
             df_wind_total = df_wind.copy()
             reference_index = df_wind_total.index
@@ -48,10 +54,14 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
     df_wind_total.rename(columns={"yhat": "wind"}, inplace=True)
 
     # 1c) Load load and market price
-    df_load = load_forecasted_data("load", source_id=None, start=start, end=end)
+    df_load = crud_manager.load_forecasted_data(
+        "load", source_id=None, start=start, end=end
+    )
     df_load.rename(columns={"yhat": "load"}, inplace=True)
 
-    df_market = load_forecasted_data("market", source_id=None, start=start, end=end)
+    df_market = crud_manager.load_forecasted_data(
+        "market", source_id=None, start=start, end=end
+    )
     df_market.rename(columns={"yhat": "price"}, inplace=True)
 
     df_solar_total = df_solar_total["solar"].to_frame()
@@ -110,10 +120,6 @@ def optimize(
 
     # 1a) Aggregate all solar
     df = load_optimization_data(start=start, end=end)
-
-    print("Forecast data sample:")
-    print(df.head())
-    print("Missing values in forecast data:", df.isna().sum())
 
     # Our time steps are simply enumerated from 0..N-1
     time_index = df.index

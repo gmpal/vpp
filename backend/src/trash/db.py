@@ -9,7 +9,7 @@ from kafka import KafkaProducer
 from psycopg2.extras import execute_values
 
 from multiprocessing import Process
-from src.battery import Battery
+from backend.src.storage.battery import Battery
 
 
 RENEWABLES = ["solar", "wind"]  # scalable for more renewables

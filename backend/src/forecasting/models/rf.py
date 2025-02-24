@@ -7,8 +7,8 @@ from typing import Dict, Any
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
 
-from src.models.base import BaseTimeSeriesModel
-from src.feature_engineering import create_regression_features
+from backend.src.forecasting.base import BaseTimeSeriesModel
+from backend.src.forecasting.feature_engineering import create_regression_features
 
 
 class RandomForestTimeSeriesModel(BaseTimeSeriesModel):

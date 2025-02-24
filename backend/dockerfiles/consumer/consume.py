@@ -1,4 +1,4 @@
-from src.communication import kafka_consume_centralized
+from backend.src.streaming.communication import kafka_consume_centralized
 from multiprocessing import Process
 import sys
 

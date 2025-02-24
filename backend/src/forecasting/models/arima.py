@@ -5,8 +5,8 @@ from typing import Dict, Any
 import pandas as pd
 import numpy as np
 
-from src.models.base import BaseTimeSeriesModel
-from src.feature_engineering import create_time_features
+from backend.src.forecasting.base import BaseTimeSeriesModel
+from backend.src.forecasting.feature_engineering import create_time_features
 
 
 class ARIMATimeSeriesModel(BaseTimeSeriesModel):

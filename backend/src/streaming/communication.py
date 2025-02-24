@@ -5,7 +5,7 @@ import os
 import configparser
 
 from kafka import KafkaConsumer, KafkaProducer
-from src.db import save_to_db
+from backend.src.db import DatabaseManager, CrudManager
 
 
 def _get_server_info():
@@ -165,6 +165,9 @@ def kafka_consume_centralized():
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
     )
 
+    db_manager = DatabaseManager()
+    crud = CrudManager(db_manager)
+
     for msg in consumer:
         topic = msg.topic
 
@@ -178,4 +181,4 @@ def kafka_consume_centralized():
 
         time_obj = pd.to_datetime(timestamp)
 
-        save_to_db(topic, time_obj, source_id, value)
+        crud.save_to_db(topic, time_obj, source_id, value)

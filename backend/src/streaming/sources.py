@@ -1,13 +1,13 @@
 from multiprocessing import Process
 
-from src.generation import (
+from backend.src.pipelines.generation import (
     generate_weather_data,
     generate_wind_data,
     generate_pv_data,
     read_generation_config,
 )
 
-from src.communication import (
+from backend.src.streaming.communication import (
     make_single_producer_info,
     kafka_produce,
 )

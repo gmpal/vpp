@@ -1,4 +1,4 @@
-from src.generation import (
+from backend.src.pipelines.generation import (
     generate_weather_data,
     generate_wind_data,
     generate_pv_data,
@@ -7,9 +7,9 @@ from src.generation import (
     read_generation_config,
 )
 
-from src.sources import create_new_source
+from backend.src.streaming.sources import create_new_source
 
-from src.communication import (
+from backend.src.streaming.communication import (
     make_producers_info,
     kafka_produce,
     kafka_consume_centralized,

@@ -11,14 +11,19 @@ warnings.filterwarnings(
     category=FutureWarning,
 )
 # Import models
-from src.models import (
+from backend.src.forecasting import (
     ARIMATimeSeriesModel,
     ProphetTimeSeriesModel,
     RandomForestTimeSeriesModel,
     MLPTimeSeriesModel,
     # TFTTimeSeriesModel,
 )
-from src.db import RENEWABLES, OTHER_DATASETS, load_historical_data, query_source_ids
+from backend.src.db import (
+    RENEWABLES,
+    OTHER_DATASETS,
+    load_historical_data,
+    query_source_ids,
+)
 
 
 def get_datasets_list():

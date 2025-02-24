@@ -1,0 +1,41 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+statsmodels
+scipy
+xgboost
+lightgbm
+joblib
+pvlib
+windpowerlib
+prophet
+kafka-python
+prometheus_client
+pulp
+
+fastapi 
+uvicorn 
+
+psycopg2-binary
+
+mlflow 
+# evidently 
+optuna 
+# tensorflow 
+# keras
+# torch
+# pytorch-lightning
+# pytorch-forecasting
+# apache-airflow
+
+pmdarima 
+plotly
+# darts
+asyncpg
+
+pytest
+pytest-mock
+pytest_postgresql
+pytest-cov
