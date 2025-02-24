@@ -119,7 +119,7 @@ class SchemaManager:
                 value       DOUBLE PRECISION
             );
             SELECT create_hypertable('{renewable}', 'time');
-            """
+            """.strip()
             self.db.execute(query)
 
     def _create_renewables_forecast_tables(self):
