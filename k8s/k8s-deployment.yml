@@ -1,0 +1,101 @@
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: your-registry/backend:latest  # Built from Dockerfile.backend
+        ports:
+        - containerPort: 8000
+        env:
+        - name: POSTGRES_DB
+          value: "postgres"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "testpass"
+        - name: TIMESCALEDB_HOST
+          value: "timescaledb"
+        - name: POSTGRES_PORT
+          value: "5432"
+
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+      - name: frontend
+        image: your-registry/frontend:latest  # Built from Dockerfile.frontend
+        ports:
+        - containerPort: 80
+
+# TimescaleDB Service (instead of db-init)
+apiVersion: v1
+kind: Service
+metadata:
+  name: timescaledb
+spec:
+  ports:
+  - port: 5432
+    targetPort: 5432
+  selector:
+    app: timescaledb
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: timescaledb
+spec:
+  serviceName: "timescaledb"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: timescaledb
+  template:
+    metadata:
+      labels:
+        app: timescaledb
+    spec:
+      containers:
+      - name: timescaledb
+        image: timescale/timescaledb-ha:pg17
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "testpass"
+
+# Inference Job (example)
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: inference
+spec:
+  template:
+    spec:
+      containers:
+      - name: inference
+        image: your-registry/inference:latest  # Built from Dockerfile.inference
+      restartPolicy: OnFailure

@@ -1,0 +1,1 @@
+K8s setup for this project is currently under development and not yet available

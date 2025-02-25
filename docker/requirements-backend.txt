@@ -30,7 +30,7 @@ optuna
 # pytorch-forecasting
 # apache-airflow
 
-pmdarima 
+pmdarima
 plotly
 # darts
 asyncpg
