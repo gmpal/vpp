@@ -21,9 +21,12 @@ def _get_server_info():
     config = configparser.ConfigParser()
 
     # Read the config.ini file
-    config.read("config.ini")
+    config.read(".streaming-config.ini")
 
-    bs = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", config["Kafka"]["bootstrap_servers"])
+    bs = (
+        os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
+        or config["Kafka"]["bootstrap_servers"]
+    )
     print("Using bootstrap servers:", bs, flush=True)
     return bs
 

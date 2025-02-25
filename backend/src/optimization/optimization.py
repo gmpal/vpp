@@ -32,6 +32,16 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
             df_solar_total["yhat"] = df_solar_total["yhat"].add(
                 df_solar["yhat"], fill_value=0
             )
+    if df_solar_total is None:
+        df_solar_total = pd.DataFrame(
+            columns=["solar"],
+            index=(
+                reference_index
+                if reference_index is not None
+                else pd.date_range(start or "2025-01-01", periods=1, freq="h")
+            ),
+        )
+
     df_solar_total.rename(columns={"yhat": "solar"}, inplace=True)
 
     # 1b) Aggregate all wind
@@ -51,6 +61,15 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
             df_wind_total["yhat"] = df_wind_total["yhat"].add(
                 df_wind["yhat"], fill_value=0
             )
+    if df_wind_total is None:
+        df_wind_total = pd.DataFrame(
+            columns=["wind"],
+            index=(
+                reference_index
+                if reference_index is not None
+                else pd.date_range(start or "2025-01-01", periods=1, freq="h")
+            ),
+        )
     df_wind_total.rename(columns={"yhat": "wind"}, inplace=True)
 
     # 1c) Load load and market price

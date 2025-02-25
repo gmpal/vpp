@@ -7,6 +7,7 @@ from backend.api.routes.optimization import router as optimize_router
 from backend.api.routes.batteries import router as batteries_router
 
 from backend.src.storage.battery import Battery
+from backend.src.optimization.optimization import load_optimization_data
 
 
 import pandas as pd
@@ -56,6 +57,23 @@ def test_add_battery(client, reset_batteries):
     assert data["soc_kWh"] == 50.0
 
 
+# Test POST /api/batteries to add a battery
+def test_add_battery_wrong_soc(client, reset_batteries):
+    payload = {
+        "capacity_kWh": 100.0,
+        "current_soc_kWh": 150.0,
+        "max_charge_kW": 20.0,
+        "max_discharge_kW": 20.0,
+        "eta": 0.9,
+    }
+    response = client.post("/api/batteries", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "battery_id" in data
+    assert data["capacity_kWh"] == 100.0
+    assert data["soc_kWh"] == 100.0
+
+
 # Test POST /api/batteries/{battery_id}/charge
 def test_charge_battery(client, reset_batteries):
     # First, add a battery
@@ -80,6 +98,60 @@ def test_charge_battery(client, reset_batteries):
 
     data = response.json()
     assert data["soc_kWh"] == 68.0  # 50 + (20 * 0.9)
+
+
+# Test POST /api/batteries/{battery_id}/charge
+def test_charge_battery_negative_charge(client, reset_batteries):
+    # First, add a battery
+    payload = {
+        "capacity_kWh": 100.0,
+        "current_soc_kWh": 50.0,
+        "max_charge_kW": 20.0,
+        "max_discharge_kW": 20.0,
+        "eta": 0.9,
+    }
+    response = client.post("/api/batteries", json=payload)
+    assert response.status_code == 200
+
+    battery_id = response.json()["battery_id"]
+
+    charge_payload = {
+        "power_kW": -100.0,  # Charging at 20 kW
+        "duration_h": 1.0,  # For 1 hour
+    }
+    response = client.post(f"/api/batteries/{battery_id}/charge", json=charge_payload)
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["soc_kWh"] == 50
+
+
+# Test POST /api/batteries/{battery_id}/charge
+def test_discharge_battery_negative_charge(client, reset_batteries):
+    # First, add a battery
+    payload = {
+        "capacity_kWh": 100.0,
+        "current_soc_kWh": 50.0,
+        "max_charge_kW": 20.0,
+        "max_discharge_kW": 20.0,
+        "eta": 0.9,
+    }
+    response = client.post("/api/batteries", json=payload)
+    assert response.status_code == 200
+
+    battery_id = response.json()["battery_id"]
+
+    charge_payload = {
+        "power_kW": -100.0,  # Charging at 20 kW
+        "duration_h": 1.0,  # For 1 hour
+    }
+    response = client.post(
+        f"/api/batteries/{battery_id}/discharge", json=charge_payload
+    )
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["soc_kWh"] == 50
 
 
 # Test GET /api/historical/{source} with mocked data

@@ -106,25 +106,3 @@ class Battery:
             f"max_discharge={self.max_discharge_kW} kW, "
             f"eta={self.round_trip_efficiency})"
         )
-
-
-# Example usage:
-if __name__ == "__main__":
-    # Create a battery
-    battery = Battery(
-        capacity_kWh=10.0,
-        current_soc_kWh=5.0,
-        max_charge_kW=2.0,
-        max_discharge_kW=2.0,
-        round_trip_efficiency=0.95,
-    )
-
-    print("Initial:", battery)
-
-    # Charge the battery at 2 kW for 2 hours
-    p_charge = battery.charge(power_kW=2.0, duration_h=2.0)
-    print(f"Charged at {p_charge:.2f} kW for 2 hours, new {battery}")
-
-    # Discharge the battery at 3 kW for 1 hour (but max discharge = 2 kW)
-    p_discharge = battery.discharge(power_kW=3.0, duration_h=1.0)
-    print(f"Discharged at {p_discharge:.2f} kW for 1 hour, new {battery}")

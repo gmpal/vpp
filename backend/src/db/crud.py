@@ -1,6 +1,6 @@
 # db/crud.py
 import pandas as pd
-from backend.src.battery import Battery
+from backend.src.storage.battery import Battery
 
 
 class CrudManager:

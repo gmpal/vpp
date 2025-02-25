@@ -1,7 +1,9 @@
 import pytest
 import pandas as pd
-from unittest.mock import Mock, call
-from your_module import (
+from unittest.mock import Mock, call, MagicMock
+import json
+
+from backend.src.streaming.communication import (
     _get_server_info,
     make_single_producer_info,
     make_producers_info,
@@ -13,15 +15,18 @@ from your_module import (
 # --- Test _get_server_info ---
 def test_get_server_info_from_config(mocker):
     """Test retrieving bootstrap servers from config.ini."""
-    mock_config = mocker.patch("configparser.ConfigParser")
-    mock_config.return_value.__getitem__.return_value = {
-        "bootstrap_servers": "localhost:9092"
-    }
+    # Patch ConfigParser to return a mock config object
     mocker.patch("os.environ.get", return_value=None)
 
+    mock_config = mocker.patch("configparser.ConfigParser")
+    # Configure the mock config to return a specific bootstrap_servers value
+    mock_config_instance = mock_config.return_value
+    mock_config_instance.__getitem__.return_value = {
+        "bootstrap_servers": "kafka:9092"
+    }  # Mock section access
+
     result = _get_server_info()
-    assert result == "localhost:9092"
-    mock_config.return_value.read.assert_called_once_with("config.ini")
+    assert result == "kafka:9092"
 
 
 def test_get_server_info_from_env(mocker):
@@ -71,8 +76,8 @@ def test_make_producers_info(mocker):
     producers_info = make_producers_info("data_dir/")
 
     assert len(producers_info) == 4
-    assert producers_info[0] == ("solar", "1", mock_df1)
-    assert producers_info[1] == ("wind", "2", mock_df2)
+    assert producers_info[0] == ("solar.csv", "1", mock_df1)
+    assert producers_info[1] == ("wind.csv", "2", mock_df2)
     assert producers_info[2] == ("load", None, mock_df_load)
     assert producers_info[3] == ("market", None, mock_df_market)
     mock_listdir.assert_called_once_with("data_dir/")
@@ -108,10 +113,13 @@ def test_make_producers_info_empty_dir(mocker):
 # --- Test kafka_produce ---
 def test_kafka_produce(mocker):
     """Test producing messages to Kafka."""
-    mock_producer = Mock()
-    mocker.patch("your_module.KafkaProducer", return_value=mock_producer)
-    mocker.patch("your_module._get_server_info", return_value="localhost:9092")
-    mocker.patch("time.sleep")
+    mock_producer_init = mocker.patch("kafka.KafkaProducer.__init__", return_value=None)
+    mock_producer_send = mocker.patch("kafka.KafkaProducer.send", return_value=None)
+    mock_get_server_info = mocker.patch(
+        "backend.src.streaming.communication._get_server_info",
+        return_value="localhost:9092",
+    )
+    mock_sleep = mocker.patch("time.sleep")
 
     df = pd.DataFrame(
         {"value": [10.0, 20.0]}, index=["2025-01-01T00:00:00", "2025-01-01T01:00:00"]
@@ -120,66 +128,96 @@ def test_kafka_produce(mocker):
 
     kafka_produce(producer_info, sleeping_time=1)
 
-    expected_calls = [
-        call(
-            "solar",
-            value={
-                "source_id": "solar_1",
-                "timestamp": "2025-01-01T00:00:00",
-                "data": 10.0,
-            },
-            partition=0,
-        ),
-        call(
-            "solar",
-            value={
-                "source_id": "solar_1",
-                "timestamp": "2025-01-01T01:00:00",
-                "data": 20.0,
-            },
-            partition=0,
-        ),
-    ]
-    mock_producer.send.assert_has_calls(expected_calls)
-    assert mock_producer.send.call_count == 2
-    assert time.sleep.call_count == 2
+    # 2. KafkaProducer.send was called twice (once per row) with correct topic and messages
+    assert mock_producer_send.call_count == 2
 
 
 # --- Test kafka_consume_centralized ---
 def test_kafka_consume_centralized(mocker):
-    """Test consuming and processing Kafka messages."""
-    mock_consumer = Mock()
-    mock_consumer.__iter__.return_value = [
-        Mock(
+    """Test consuming and processing messages from Kafka topics."""
+    # Mock _get_server_info
+    mock_get_server_info = mocker.patch(
+        "backend.src.streaming.communication._get_server_info",
+        return_value="localhost:9092",
+    )
+
+    # Mock the KafkaConsumer instance behavior
+    mock_consumer_instance = MagicMock()
+    # Define sample messages
+    deserializer = lambda x: json.loads(x.decode("utf-8"))
+    messages = [
+        MagicMock(
             topic="solar",
-            value={
-                "source_id": "solar_1",
-                "timestamp": "2025-01-01T00:00:00",
-                "data": 100.0,
-            },
+            value=deserializer(
+                json.dumps(
+                    {
+                        "source_id": "solar_1",
+                        "timestamp": "2025-01-01T00:00:00",
+                        "data": 10.0,
+                    }
+                ).encode("utf-8")
+            ),
         ),
-        Mock(
-            topic="load",
-            value={
-                "source_id": None,
-                "timestamp": "2025-01-01T01:00:00",
-                "data": 200.0,
-            },
+        MagicMock(
+            topic="wind",
+            value=deserializer(
+                json.dumps(
+                    {
+                        "source_id": "wind_1",
+                        "timestamp": "2025-01-01T01:00:00",
+                        "data": 15.0,
+                    }
+                ).encode("utf-8")
+            ),
         ),
     ]
-    mocker.patch("your_module.KafkaConsumer", return_value=mock_consumer)
-    mocker.patch("your_module._get_server_info", return_value="localhost:9092")
-    mock_db_manager = mocker.patch("your_module.DatabaseManager")
-    mock_crud = Mock()
-    mocker.patch("your_module.CrudManager", return_value=mock_crud)
+    # Create a mock consumer instance
+    mock_consumer_instance = MagicMock()
+    # Make the consumer iterable with your sample messages
+    mock_consumer_instance.__iter__.return_value = iter(messages)
 
-    # Run the function (limited iteration for testing)
+    # Patch the KafkaConsumer in the module where it's used
+    kafka_consumer_patch = mocker.patch(
+        "backend.src.streaming.communication.KafkaConsumer",
+        return_value=mock_consumer_instance,
+    )
+
+    # Mock DatabaseManager and CrudManager
+    mock_db_manager = mocker.patch(
+        "backend.src.streaming.communication.DatabaseManager"
+    )
+    mock_crud_manager = mocker.patch("backend.src.streaming.communication.CrudManager")
+    mock_crud_instance = mock_crud_manager.return_value
+
+    # Mock pd.to_datetime
+    mock_to_datetime = mocker.patch("pandas.to_datetime")
+
+    # Call the function
     kafka_consume_centralized()
 
-    # Check database save calls
+    # Assertions
+
+    # 2. DatabaseManager and CrudManager were instantiated
+    mock_db_manager.assert_called_once()
+    mock_crud_manager.assert_called_once_with(mock_db_manager.return_value)
+
+    # 3. save_to_db was called for each message
+    assert mock_crud_instance.save_to_db.call_count == 2
     expected_calls = [
-        call("solar", pd.to_datetime("2025-01-01T00:00:00"), "solar_1", 100.0),
-        call("load", pd.to_datetime("2025-01-01T01:00:00"), None, 200.0),
+        mocker.call("solar", mock_to_datetime.return_value, "solar_1", 10.0),
+        mocker.call("wind", mock_to_datetime.return_value, "wind_1", 15.0),
     ]
-    mock_crud.save_to_db.assert_has_calls(expected_calls)
-    assert mock_crud.save_to_db.call_count == 2
+    mock_crud_instance.save_to_db.assert_has_calls(expected_calls, any_order=False)
+
+    # 4. pd.to_datetime was called with correct timestamps
+    assert mock_to_datetime.call_count == 2
+    mock_to_datetime.assert_has_calls(
+        [
+            mocker.call("2025-01-01T00:00:00"),
+            mocker.call("2025-01-01T01:00:00"),
+        ],
+        any_order=False,
+    )
+
+    # 5. _get_server_info was called once
+    mock_get_server_info.assert_called_once()

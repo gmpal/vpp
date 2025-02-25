@@ -13,7 +13,7 @@ from datetime import datetime
 # TODO: change saving folder structure
 
 
-def read_generation_config(filename: str = "config.ini") -> dict:
+def read_generation_config(filename: str = "generation-config.ini") -> dict:
     config = configparser.ConfigParser()
     config.read(filename)
     config = {
@@ -314,6 +314,8 @@ def generate_pv_data(
             xlabel="Time",
             ylabel="Power (W)",
         )
+
+    return ac_power
 
 
 def generate_synthetic_load_data(

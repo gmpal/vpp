@@ -134,6 +134,22 @@ def test_add_new_source(client, schema_manager, mocker, cleanup):
     assert isinstance(data["source_id"], str)  # Assuming source_id is a string
 
 
+def test_add_new_source_exception(client, schema_manager, mocker, cleanup):
+    """Test adding a new renewable source via GET /add-source."""
+
+    # Mock create_new_source to return a success result
+    mocker.patch(
+        "backend.api.routes.sources.create_new_source",
+        side_effect=Exception("Test Exception"),
+    )
+
+    # Make the request with a source_type
+    response = client.get("/api/add-source", params={"source_type": "solar"})
+
+    # Check the response
+    assert response.status_code == 500
+
+
 def test_query_ids(client, schema_manager, cleanup):
     """Test querying source IDs for a given source type via GET /source-ids/{source}."""
     # Pre-populate the database with some test data
