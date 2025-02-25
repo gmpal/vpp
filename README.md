@@ -1,3 +1,7 @@
+# My Project
+![Tests](https://github.com/gmpal/vpp/workflows/Run%20Pytest%20Suite/badge.svg)
+![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/gmpal/ecfd0b8a247e4da2abafbdc142d7d01b/raw/coverage.json)
+
 ## Project Description
 
 This project simulates a **Virtual Power Plant (VPP)** that leverages synthetic data and modular microservices to emulate a real-world distributed energy system. The core idea is to generate synthetic data representing various energy sources and grid parameters, then process, forecast, and optimize energy management decisions in near real time.
