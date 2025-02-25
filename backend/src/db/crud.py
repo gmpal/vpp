@@ -74,7 +74,9 @@ class CrudManager:
         columns = ["time"] + (["source_id"] if source_id else []) + ["yhat"]
         query = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})"
         for time, row in forecasted_df.iterrows():
-            values = [time] + ([source_id] if source_id else []) + [row["value"]]
+            values = (
+                [time] + ([source_id] if source_id else []) + [float(row["value"])]
+            )  # Convert to float
             self.db.execute(query, values)
 
     def load_forecasted_data(
