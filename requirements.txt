@@ -39,3 +39,4 @@ pytest
 pytest-mock
 pytest_postgresql
 pytest-cov
+httpx
