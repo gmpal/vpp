@@ -55,12 +55,11 @@ jobs:
         run: |
           pytest --cov=./ --cov-report=xml --cov-report=term-missing
         env:
-          # Environment variables for your tests to connect to the DB
-          DATABASE_HOST: localhost
-          DATABASE_PORT: 5432
-          DATABASE_USER: postgres
-          DATABASE_PASSWORD: testpass
-          DATABASE_NAME: postgres # Default DB name, adjust if needed
+          POSTGRES_DB: postgres # Default database name
+          POSTGRES_USER: postgres # Default TimescaleDB user
+          POSTGRES_PASSWORD: testpass # Matches the service env
+          TIMESCALEDB_HOST: localhost # Container is accessible on localhost
+          POSTGRES_PORT: 5432 # Matches the mapped port
 
       - name: Extract coverage percentage
         if: github.ref == 'refs/heads/main'
