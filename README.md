@@ -1,4 +1,3 @@
-# My Project
 ![Tests](https://github.com/gmpal/vpp/workflows/Run%20Pytest%20Suite/badge.svg)
 ![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/gmpal/ecfd0b8a247e4da2abafbdc142d7d01b/raw/coverage.json)
 
