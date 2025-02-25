@@ -64,16 +64,14 @@ jobs:
       - name: Extract coverage percentage
         if: github.ref == 'refs/heads/main'
         run: |
-          COVERAGE=$(python -c "import json; print(json.load(open('coverage.xml'))['coverage']['line-rate'])")
-          COVERAGE_PCT=$(python -c "print(int(float('$COVERAGE') * 100))")
-          echo "COVERAGE_PCT=$COVERAGE_PCT" >> $GITHUB_ENV
+          python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); coverage = float(root.get('line-rate')) * 100; print(f'COVERAGE_PCT={int(coverage)}')" >> $GITHUB_ENV
 
       - name: Create coverage badge
         if: github.ref == 'refs/heads/main'
         uses: schneegans/dynamic-badges-action@v1.6.0
         with:
           auth: ${{ secrets.GIST_SECRET }}
-          gistID: ecfd0b8a247e4da2abafbdc142d7d01b
+          gistID: your-gist-id-here
           filename: coverage.json
           label: Coverage
           message: ${{ env.COVERAGE_PCT }}%
