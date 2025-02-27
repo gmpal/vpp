@@ -1,4 +1,3 @@
-![Tests](https://github.com/gmpal/vpp/workflows/Run%20Pytest%20Suite/badge.svg)
 ![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/gmpal/ecfd0b8a247e4da2abafbdc142d7d01b/raw/coverage.json)
 
 ## Project Description
@@ -133,79 +132,6 @@ The system is built as a collection of Dockerized microservices:
 
 ## Installation and Setup
 
-1. **Clone the Repository:**
-   ```bash
-   git clone https://github.com/your-username/your-vpp-repo.git
-   cd your-vpp-repo
-   ```
-
-2. **Build Docker Images:**
-   Build each service individually. For example, to build the backend service:
-   ```bash
-   cd backend
-   docker build -t vpp-backend .
-   ```
-
-3. **Run with Docker Compose (Optional):**
-   If a `docker-compose.yml` file is provided, you can start all services together:
    ```bash
    docker-compose up --build
    ```
-
-## Usage
-
-- **Data Ingestion:**
-  Run the `db-init` container to initialize the database and start streaming synthetic data.
-  ```bash
-  docker run --env-file .env vpp-db-init
-  ```
-
-- **Backend API:**
-  Start the backend API service:
-  ```bash
-  docker run -p 8000:8000 --env-file .env vpp-backend
-  ```
-
-- **Frontend UI:**
-  Launch the frontend to add sources or battery configurations:
-  ```bash
-  docker run -p 80:80 vpp-frontend
-  ```
-
-- **Forecasting Pipelines:**
-  - **Training Pipeline:**  
-    Runs every 60 minutes to update models.
-  - **Inference Pipeline:**  
-    Runs every 5 minutes to provide updated forecasts.
-
-- **Optimization:**
-  The optimization module (using PuLP) processes forecasted data and battery states to output an optimal strategy for grid interactions and battery management.
-
-## Deployment
-
-- **AWS ECS:**  
-  Package each service as an ECS task for scalable, cloud-based deployment.
-- **Load Balancers:**  
-  Use ALBs to route traffic to the appropriate services (e.g., frontend on port 80, backend on port 8000).
-- **Environment Variables:**  
-  Configure through ECS task definitions or AWS Secrets Manager.
-
-## Troubleshooting
-
-- **Logs:**  
-  Check container logs to diagnose issues:
-  ```bash
-  docker logs <container-id>
-  ```
-- **Environment Variables:**  
-  Ensure all required environment variables are correctly set in your `.env` file or deployment configuration.
-- **Service Communication:**  
-  Verify network settings so that all services can resolve and communicate with one another (e.g., TimescaleDB, Kafka, MLflow).
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request with your suggestions, improvements, or bug fixes.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
