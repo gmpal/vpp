@@ -31,9 +31,7 @@ RUN pip install --upgrade pip
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the project
-COPY src ./src
-COPY data ./data
-COPY app.py .
+COPY backend ./backend
 COPY create_topics.py .
 
 COPY config.ini .

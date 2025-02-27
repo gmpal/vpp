@@ -10,6 +10,7 @@ __pycache__/
 data/
 airflow-data/
 mlruns/
+artifacts/
 mlflow_volume/
 backend/node_modules/
 frontend/node_modules/

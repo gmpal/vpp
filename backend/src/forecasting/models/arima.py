@@ -5,7 +5,7 @@ from typing import Dict, Any
 import pandas as pd
 import numpy as np
 
-from backend.src.forecasting.base import BaseTimeSeriesModel
+from backend.src.forecasting.models.base import BaseTimeSeriesModel
 from backend.src.forecasting.feature_engineering import create_time_features
 
 

@@ -1,135 +1,170 @@
-# version: '3.8'
+version: '3.8'
 
 services:
-  # Zookeeper
-  zookeeper:
-    image: confluentinc/cp-zookeeper:latest
-    container_name: zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-    ports:
-      - "2181:2181"
-
-  # Kafka
-  kafka:
-    image: confluentinc/cp-kafka:latest
-    container_name: kafka
-    depends_on:
-      - zookeeper
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    ports:
-      - "9092:9092"
-
-  # TimescaleDB
-  timescaledb:
-    image: timescale/timescaledb-ha:pg17
-    container_name: timescaledb
-    environment:
-      POSTGRES_PASSWORD: postgresso
-      POSTGRES_USER: postgres
-      POSTGRES_DB: postgres
-    ports:
-      - "5432:5432"
-    volumes:
-      - timescaledb_data:/var/lib/postgresql/data
-
-  # db-init service (runs 01_filldb.py after TimescaleDB is ready)
-  db-init:
-    build:
-      context: ./backend
-      dockerfile: db-init.Dockerfile
-    container_name: db_init
-    depends_on:
-      - timescaledb
-    # This will exit once 01_filldb.py completes
-    restart: "no"
-
-  # Backend service
+  # Backend service (always running, exposes port 8000)
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: backend
-    depends_on:
-      - kafka
-      - timescaledb
-      - db-init  # So it only starts after DB is initialized
-    environment:
-      DATABASE_URL: postgres://postgres:postgresso@timescaledb:5432/postgres
-      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      context: .
+      dockerfile: docker/dev/backend.Dockerfile
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT}:${BACKEND_PORT}"
+    environment:
+      - TIMESCALEDB_HOST=${TIMESCALEDB_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - timescaledb
+      - kafka
+      - mlflow
     volumes:
-      - ./backend:/app  # optional for dev
+      - ./backend:/app/backend
 
-  # Frontend service
+  # Frontend service (always running, exposes port 3000 for development)
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile 
-    container_name: frontend
+      context: .
+      dockerfile: docker/dev/frontend.Dockerfile
+    ports:
+      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+    environment:
+      - REACT_APP_API_URL=${REACT_APP_API_BASE_URL}
     depends_on:
       - backend
+
+  # TimescaleDB service (always running, exposes port 5432)
+  timescaledb:
+    build:
+      context: .
+      dockerfile: docker/dev/timescaledb.Dockerfile
     environment:
-      REACT_APP_API_URL: http://localhost:3000
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     ports:
-      - "3000:80"
+      - "${POSTGRES_PORT}:${POSTGRES_PORT}"
     volumes:
-      - ./frontend:/app  # optional for dev
+      - timescaledb-data:/var/lib/postgresql/data
+
+  # Kafka service (always running, depends on Zookeeper)
+  kafka:
+    build:
+      context: .
+      dockerfile:  docker/dev/kafka.Dockerfile
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT=${KAFKA_ZOOKEEPER_CONNECT}
+      - KAFKA_ADVERTISED_LISTENERS=${KAFKA_ADVERTISED_LISTENERS}
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=${KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR}
+    depends_on:
+      - zookeeper
+    ports:
+      - "${KAFKA_PORT}:${KAFKA_PORT}"
+
+  # Zookeeper service (always running, exposes port 2181)
+  zookeeper:
+    build:
+      context: .
+      dockerfile: docker/dev/zookeeper.Dockerfile
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=${ZOOKEEPER_CLIENT_PORT}
+      - ZOOKEEPER_TICK_TIME=${ZOOKEEPER_TICK_TIME}
+    ports:
+      - "${ZOOKEEPER_CLIENT_PORT}:${ZOOKEEPER_CLIENT_PORT}"
+
+  # MLflow service (always running, exposes port 5000)
   mlflow:
-    image: ghcr.io/mlflow/mlflow:latest
-    container_name: mlflow
-    ports:
-      - "5000:5000"
+    build:
+      context: .
+      dockerfile: docker/dev/mlflow.Dockerfile
     environment:
-      - MLFLOW_BACKEND_STORE_URI
-      - MLFLOW_DEFAULT_ARTIFACT_ROOT
-    command: >
-      mlflow server 
-        --backend-store-uri $MLFLOW_BACKEND_STORE_URI 
-        --default-artifact-root $MLFLOW_DEFAULT_ARTIFACT_ROOT
-        --host 0.0.0.0
-        --port 5000
+      - MLFLOW_PORT=${MLFLOW_PORT}
+    ports:
+      - "${MLFLOW_PORT}:${MLFLOW_PORT}"
+
+  # Kafka Consumer service (always running, listens for Kafka messages)
+  consumer:
+    build:
+      context: .
+      dockerfile: docker/dev/consumer.Dockerfile
+    environment:
+      - TIMESCALEDB_HOST=${TIMESCALEDB_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - timescaledb
+      - kafka
+      - zookeeper
+      - backend
     volumes:
-      - ./mlflow_volume:/mlruns
+      - ./backend:/app/backend
 
-  # train:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: train.Dockerfile 
-  #   depends_on:
-  #     - timescaledb
-  #     - mlflow
-  #     - db-init
-  #   container_name: training
-  #   volumes:
-  #     - ./mlflow_volume:/mlruns
-  #   # This will run train_pipeline.py once and then exit
-  #   restart: "no"
+  # DB Initialization service (runs once after all services are up)
+  db-init:
+    build:
+      context: .
+      dockerfile: docker/dev/db-init.Dockerfile
+    environment:
+      - TIMESCALEDB_HOST=${TIMESCALEDB_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+    depends_on:
+      - timescaledb
+      - kafka
+    profiles:
+      - init
+    volumes:
+      - ./backend:/app/backend
 
-  # inference:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: inference.Dockerfile  # or reuse train.Dockerfile + override CMD
-  #   container_name: inference
-  #   volumes:
-  #     - ./mlflow_volume:/mlruns
-  #   depends_on:
-  #     - timescaledb
-  #     - mlflow
-  #     - db-init
-  #   environment:
-  #     DATABASE_URL: postgres://postgres:postgresso@timescaledb:5432/postgres
-  #     KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #     # If your inference code needs to see MLflow...
-  #     MLFLOW_TRACKING_URI: http://mlflow:5000
-  #   # We want this container to run once and exit:
-  #   restart: "no"
+  # Inference service (periodic task, not always running)
+  inference:
+    build:
+      context: .
+      dockerfile: docker/dev/inference.Dockerfile
+    environment:
+      - TIMESCALEDB_HOST=${TIMESCALEDB_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+    depends_on:
+      - timescaledb
+      - mlflow
+    profiles:
+      - task
+    volumes:
+      - ./backend:/app/backend
+
+
+  # Training service (periodic task, not always running)
+  training:
+    build:
+      context: .
+      dockerfile: docker/dev/training.Dockerfile
+    environment:
+      - TIMESCALEDB_HOST=${TIMESCALEDB_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+    depends_on:
+      - timescaledb
+      - mlflow
+    profiles:
+      - task
+    volumes:
+      - ./backend:/app/backend
+
 
 volumes:
-  timescaledb_data:
+  timescaledb-data:

@@ -1,4 +1,7 @@
 # db/schema.py
+from .connection import DatabaseManager
+
+
 class SchemaManager:
 
     def __init__(self, db_manager):
@@ -22,9 +25,6 @@ class SchemaManager:
         self.db.execute(query)
 
     def _drop_forecasting_tables_in_public(self):
-        forecast_tables = [
-            f"{source}_forecast" for source in self.db.renewables + ["load", "market"]
-        ]
         query = """
         DO $$
         DECLARE
@@ -34,13 +34,13 @@ class SchemaManager:
                 SELECT tablename 
                 FROM pg_tables
                 WHERE schemaname = 'public'
-                AND tablename = ANY(%s)
+                AND tablename ILIKE '%forecast%'
             LOOP
                 EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE;', tbl.tablename);
             END LOOP;
         END $$;
         """
-        self.db.execute(query, (forecast_tables,))
+        self.db.execute(query)
 
     def _create_energy_sources_table(self):
         query = """
@@ -152,3 +152,11 @@ class SchemaManager:
         self._create_market_forecast_table()
         self._create_load_forecast_table()
         self._create_renewables_forecast_tables()
+
+
+if __name__ == "__main__":
+    db = DatabaseManager()
+    schema = SchemaManager(db)
+    schema.reset_all_tables()
+    print("All tables created successfully.")
+    db.close()

@@ -14,17 +14,25 @@ from datetime import datetime
 
 
 def read_generation_config(filename: str = "generation-config.ini") -> dict:
-    config = configparser.ConfigParser()
-    config.read(filename)
+    # config = configparser.ConfigParser()
+    # config.read(filename)
+    # config = {
+    #     "output_path": config.get("Generation", "output_path"),
+    #     "num_sources": int(config.get("Generation", "num_sources")),
+    #     "freq": config.get("Generation", "freq"),
+    #     "num_days": int(config.get("Generation", "num_days")),
+    #     "sleeping_time": int(config.get("Generation", "sleeping_time")),
+    #     "starting_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    # }
+
     config = {
-        "output_path": config.get("Generation", "output_path"),
-        "num_sources": int(config.get("Generation", "num_sources")),
-        "freq": config.get("Generation", "freq"),
-        "num_days": int(config.get("Generation", "num_days")),
-        "sleeping_time": int(config.get("Generation", "sleeping_time")),
+        "output_path": "./backend/data/",
+        "num_sources": 10,
+        "freq": "h",
+        "num_days": 100,
+        "sleeping_time": 1,
         "starting_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
-
     return config
 
 

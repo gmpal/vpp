@@ -4,26 +4,20 @@ import pickle
 import numpy as np
 from sklearn.model_selection import TimeSeriesSplit
 import warnings
+from backend.src.forecasting.models import (
+    RandomForestTimeSeriesModel,
+)
+from backend.src.db import DatabaseManager, CrudManager, SchemaManager
 
 # Suppress the FutureIncompatibilityWarning from holidays
 warnings.filterwarnings(
     "ignore",
     category=FutureWarning,
 )
-# Import models
-from backend.src.forecasting import (
-    ARIMATimeSeriesModel,
-    ProphetTimeSeriesModel,
-    RandomForestTimeSeriesModel,
-    MLPTimeSeriesModel,
-    # TFTTimeSeriesModel,
-)
-from backend.src.db import (
-    RENEWABLES,
-    OTHER_DATASETS,
-    load_historical_data,
-    query_source_ids,
-)
+
+db_manager = DatabaseManager()
+crud_manager = CrudManager(db_manager)
+schema_manager = SchemaManager(db_manager)
 
 
 def get_datasets_list():
@@ -35,13 +29,13 @@ def get_datasets_list():
     datasets_info = []
 
     # 1) Loop over each renewable and its source_ids
-    for renewable in RENEWABLES:
-        sids = query_source_ids(renewable)  # e.g., ['010780', '0XYZ', ...]
+    for renewable in db_manager.renewables:
+        sids = crud_manager.query_source_ids(renewable)  # e.g., ['010780', 'XYZ', ...]
         for sid in sids:
             datasets_info.append((renewable, sid))
 
     # 2) Add non-renewable datasets without source_id
-    for ds in OTHER_DATASETS:
+    for ds in ["load", "market"]:
         datasets_info.append((ds, None))
 
     return datasets_info
@@ -97,7 +91,7 @@ def train_pipeline():
 
         for dataset, source_id in all_datasets:
             # 1) Load the entire historical datasets
-            df = load_historical_data(dataset, source_id)
+            df = crud_manager.load_historical_data(dataset, source_id)
             if df.empty:
                 print(
                     f"No data found for dataset={dataset}, source_id={source_id}, skipping..."

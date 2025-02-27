@@ -185,3 +185,7 @@ def kafka_consume_centralized():
         time_obj = pd.to_datetime(timestamp)
 
         crud.save_to_db(topic, time_obj, source_id, value)
+
+
+if __name__ == "__main__":
+    kafka_consume_centralized()

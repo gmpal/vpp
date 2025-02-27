@@ -1,7 +1,7 @@
 # db/connection.py
 import psycopg2
 import os
-import configparser
+from configparser import ConfigParser, NoSectionError
 
 
 class DatabaseManager:
@@ -10,17 +10,39 @@ class DatabaseManager:
         self.renewables = ["solar", "wind"]
 
     def _load_config(self):
-        config = configparser.ConfigParser()
-        config.read("db-config.ini")
-        return {
-            "dbname": os.environ.get("POSTGRES_DB", config["TimescaleDB"]["dbname"]),
-            "user": os.environ.get("POSTGRES_USER", config["TimescaleDB"]["user"]),
-            "password": os.environ.get(
-                "POSTGRES_PASSWORD", config["TimescaleDB"]["password"]
-            ),
-            "host": os.environ.get("TIMESCALEDB_HOST", config["TimescaleDB"]["host"]),
-            "port": os.environ.get("POSTGRES_PORT", config["TimescaleDB"]["port"]),
+        # Start with defaults from environment variables
+        config = {
+            "host": os.environ.get("TIMESCALEDB_HOST", "localhost"),
+            "port": os.environ.get("POSTGRES_PORT", "5432"),
+            "dbname": os.environ.get("POSTGRES_DB", "postgres"),
+            "user": os.environ.get("POSTGRES_USER", "postgres"),
+            "password": os.environ.get("POSTGRES_PASSWORD", "password"),
         }
+
+        # Optionally load from config file if it exists
+        config_parser = ConfigParser()
+        config_file = "/app/config.ini"  # Adjust path as needed
+        if os.path.exists(config_file):
+            config_parser.read(config_file)
+            try:
+                timescale_config = config_parser["TimescaleDB"]
+                # Update config with file values only if they exist
+                config.update(
+                    {
+                        "host": timescale_config.get("host", config["host"]),
+                        "port": timescale_config.get("port", config["port"]),
+                        "dbname": timescale_config.get("dbname", config["dbname"]),
+                        "user": timescale_config.get("user", config["user"]),
+                        "password": timescale_config.get(
+                            "password", config["password"]
+                        ),
+                    }
+                )
+            except NoSectionError:
+                # Ignore if TimescaleDB section is missing
+                pass
+
+        return config
 
     def connect(self):
         """Return a new database connection."""

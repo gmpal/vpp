@@ -4,7 +4,7 @@ import numpy as np
 from prophet import Prophet
 from sklearn.metrics import mean_squared_error
 
-from backend.src.forecasting.base import BaseTimeSeriesModel
+from backend.src.forecasting.models.base import BaseTimeSeriesModel
 
 
 class ProphetTimeSeriesModel(BaseTimeSeriesModel):

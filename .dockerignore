@@ -14,5 +14,7 @@ node_modules
 # Ignore logs
 airflow-data/logs/
 
-# Exclude .env file TODO: we keep it temporarily but its unsafe
-#.env
+backend/__pycache__/
+backend/.vscode/
+backend/mlruns/
+backend/node_modules

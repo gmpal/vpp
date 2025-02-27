@@ -1,7 +1,7 @@
 import pandas as pd
 from sklearn.metrics import mean_squared_error
 
-from backend.src.forecasting.base import BaseTimeSeriesModel
+from backend.src.forecasting.models.base import BaseTimeSeriesModel
 from backend.src.forecasting.feature_engineering import (
     create_time_features,
     create_future_features,

@@ -1,33 +1,23 @@
 import mlflow
+from mlflow.tracking import MlflowClient
+from backend.src.db import DatabaseManager, CrudManager, SchemaManager
 import os
 import pickle
-import numpy as np
 import pandas as pd
-from datetime import timedelta
-
-from mlflow.tracking import MlflowClient
-
-mlflow.set_tracking_uri(
-    "http://vpp-mlflow-load-balancer-23407623.eu-central-1.elb.amazonaws.com"
-)
-client = MlflowClient()
-
-
-from backend.src.db import (
-    load_historical_data,
-    save_single_forecasts_to_db,
-    RENEWABLES,
-    OTHER_DATASETS,
-    query_source_ids,
-)
-
-
 import warnings
 
 warnings.filterwarnings(
     "ignore",
     category=FutureWarning,
 )
+
+mlflow.set_tracking_uri("http://mlflow:5000")
+print(f"MLflow tracking URI set to: {mlflow.get_tracking_uri()}")
+
+client = MlflowClient()
+db_manager = DatabaseManager()
+crud_manager = CrudManager(db_manager)
+schema_manager = SchemaManager(db_manager)
 
 
 def get_datasets_list():
@@ -39,16 +29,94 @@ def get_datasets_list():
     datasets_info = []
 
     # 1) Loop over each renewable and its source_ids
-    for renewable in RENEWABLES:
-        sids = query_source_ids(renewable)  # e.g., ['010780', 'XYZ', ...]
+    for renewable in db_manager.renewables:
+        sids = crud_manager.query_source_ids(renewable)  # e.g., ['010780', 'XYZ', ...]
         for sid in sids:
             datasets_info.append((renewable, sid))
 
     # 2) Add non-renewable datasets without source_id
-    for ds in OTHER_DATASETS:
+    for ds in ["load", "market"]:
         datasets_info.append((ds, None))
 
     return datasets_info
+
+
+def _load_model_from_registry(dataset, source_id):
+    """
+    Load a model from the registry based on the dataset and source ID.
+    This function constructs a registry name based on the provided dataset and source ID,
+    retrieves the latest version of the model from the registry, and attempts to download
+    the model artifacts. It looks for a .pkl file in the downloaded artifacts and loads
+    the model using pickle.
+    Args:
+        dataset (str): The name of the dataset.
+        source_id (str or None): The source identifier. If None, the registry name will not include the source ID.
+    Returns:
+        model: The loaded model object if successful, or None if the model could not be loaded.
+    """
+
+    registry_name = (
+        f"Best_{dataset}_{source_id}_Model" if source_id else f"Best_{dataset}_Model"
+    )
+
+    latest_version_info = client.get_latest_versions(registry_name, stages=["None"])[
+        0
+    ].version
+
+    model_uri = f"models:/{registry_name}/{latest_version_info}"
+
+    # Attempt to download artifacts. If model not found, skip.
+    try:
+        local_dir = mlflow.artifacts.download_artifacts(model_uri)
+
+        # Find the .pkl file in the downloaded artifacts
+        model_file = None
+        for root, _, files in os.walk(local_dir):
+            for file in files:
+                if file.endswith(".pkl"):
+                    model_file = os.path.join(root, file)
+                    break
+            if model_file:  # once found, no need to keep searching
+                break
+
+        if not model_file:
+            print("  No .pkl model file found in the artifacts. Skipping.")
+            return None
+
+        with open(model_file, "rb") as f:
+            model = pickle.load(f)
+    except Exception as e:
+        print(f"  Error loading model pickle: {e}. Skipping.")
+        return None
+
+    return model
+
+
+def _load_historical_data(dataset, source_id):
+    """
+    Load historical data from the database for a given dataset and source ID.
+    This function retrieves historical data from the database using the provided
+    dataset and source ID. The data is then sorted in ascending order based on
+    the index, as it is stored in reverse order in the database. If no historical
+    data is found, the function prints a message and returns None.
+    Args:
+        dataset (str): The name of the dataset to load historical data for.
+        source_id (str): The identifier of the data source.
+    Returns:
+        pandas.DataFrame: A DataFrame containing the historical data sorted in
+        ascending order by index. Returns None if no historical data is found.
+    """
+
+    df = crud_manager.load_historical_data(dataset, source_id)
+
+    # revert order of df (its stored in reverse order)
+    df = df.sort_index(ascending=True)
+
+    if df.empty:
+        print("  No historical data found in DB. Skipping forecast.")
+        return None
+
+    return df
 
 
 def inference_pipeline(
@@ -76,88 +144,37 @@ def inference_pipeline(
 
     # Get the full list of all datasets we want to forecast
     all_datasets = get_datasets_list()
-
+    print(f"=== Starting inference pipeline for {len(all_datasets)} datasets ===\n")
     for dataset, source_id in all_datasets:
         # 1) Construct the MLflow model URI
-        if source_id is not None:
-            # e.g. "Best_solar_010780_Model"
-            registry_name = f"Best_{dataset}_{source_id}_Model"
-        else:
-            # e.g. "Best_load_Model"
-            registry_name = f"Best_{dataset}_Model"
-
-        latest_version_info = client.get_latest_versions(
-            registry_name, stages=["None"]
-        )[0]
-        latest_version = latest_version_info.version
-
-        model_uri = f"models:/{registry_name}/{latest_version}"
-        print(f"\n=== Inference for {dataset} (source_id={source_id}) ===")
-        print(f"Model Registry URI: {model_uri}")
-
-        # Attempt to download artifacts. If model not found, skip.
-        try:
-            local_dir = mlflow.artifacts.download_artifacts(model_uri)
-        except Exception as e:
-            print(f"  Could not find or download artifacts for {model_uri}. Skipping.")
+        model = _load_model_from_registry(dataset, source_id)
+        if model is None:  # skip if model not found
             continue
-
-        # Find the .pkl file in the downloaded artifacts
-        model_file = None
-        for root, dirs, files in os.walk(local_dir):
-            for file in files:
-                if file.endswith(".pkl"):
-                    model_file = os.path.join(root, file)
-                    break
-            if model_file:  # once found, no need to keep searching
-                break
-
-        if not model_file:
-            print("  No .pkl model file found in the artifacts. Skipping.")
-            continue
-
-        # Load the model object from the pickle file
-        try:
-            with open(model_file, "rb") as f:
-                model = pickle.load(f)
-        except Exception as e:
-            print(f"  Error loading model pickle: {e}. Skipping.")
-            continue
-
+        print(f"  Model loaded for {dataset} ({source_id})")
         # 2) Load historical data from DB
-        df = load_historical_data(dataset, source_id)
-
-        # revert order of df (its stored in reverse order)
-        df = df.sort_index(ascending=True)
-
-        print("Columns:", df.columns)
-
-        if df.empty:
-            print("  No historical data found in DB. Skipping forecast.")
+        df = _load_historical_data(dataset, source_id)
+        if df is None:  # skip if no historical data
             continue
-
+        print(f"  Historical data loaded for {dataset} ({source_id})")
         # 3) Predict future horizon
         try:
             forecast_series = model.predict(df, steps=forecast_horizon, freq=freq)
         except Exception as e:
             print(f"  Model prediction error: {e}. Skipping.")
             continue
-
+        print(f"  Forecast completed for {dataset} ({source_id})")
         # 4) Build a DataFrame for the forecast
         df_forecast = pd.DataFrame(
             {"time": forecast_series.index, "value": forecast_series.values}
         ).set_index("time")
-
-        print(
-            f"  Forecast for next {forecast_horizon} steps:\n{df_forecast.head(10)}\n..."
-        )
-
+        print(f"  Forecast DataFrame created for {dataset} ({source_id})")
         # 5) (Optional) Save forecast results to DB
-        save_single_forecasts_to_db(dataset, source_id, df_forecast)
+        crud_manager.save_forecast(dataset, source_id, df_forecast)
         print("  (Placeholder) Forecast saved to DB.")
 
     print("\n=== Inference pipeline complete! ===")
 
 
 if __name__ == "__main__":
-    inference_pipeline(forecast_horizon=24, freq="h", stage="latest")
+    schema_manager.reset_forecast_tables()
+    inference_pipeline()
