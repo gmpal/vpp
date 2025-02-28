@@ -5,11 +5,9 @@ FROM node:16-alpine
 WORKDIR /app
 
 # Install dependencies
-COPY ./frontend/package.json ./frontend/package-lock.json ./
-RUN npm install
-
-# Copy all source code for hot reloading
 COPY ./frontend .
+
+RUN npm install
 
 # Expose React's default development port
 EXPOSE 3000

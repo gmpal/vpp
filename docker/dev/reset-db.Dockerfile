@@ -2,13 +2,6 @@
 FROM python:3.10-slim
 WORKDIR /app
 
-ENV TIMESCALEDB_HOST=localhost
-ENV POSTGRES_PORT=5432
-ENV POSTGRES_DB=postgres
-ENV POSTGRES_USER=gmpal
-ENV POSTGRES_PASSWORD=postgresso
-ENV KAFKA_BOOTSTRAP_SERVERS=localhost:9092
-
 RUN pip install --no-cache-dir pandas psycopg2-binary kafka-python
 COPY backend ./backend
 
