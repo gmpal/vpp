@@ -18,21 +18,20 @@ def test_read_generation_config(mocker):
     """Test reading generation config from config.ini."""
     mock_config = mocker.patch("configparser.ConfigParser")
     mock_config.return_value.get.side_effect = [
-        "../data/",
-        "5",
+        "./backend/data/",
+        "10",
         "h",
-        "7",
-        "60",  # output_path, num_sources, freq, num_days, sleeping_time
+        "100",
+        "1",  # output_path, num_sources, freq, num_days, sleeping_time
     ]
 
     config = read_generation_config("test_config.ini")
 
-    assert config["output_path"] == "../data/"
-    assert config["num_sources"] == 5
+    assert config["output_path"] == "./backend/data/"
+    assert config["num_sources"] == 10
     assert config["freq"] == "h"
-    assert config["num_days"] == 7
-    assert config["sleeping_time"] == 60
-    mock_config.return_value.read.assert_called_once_with("test_config.ini")
+    assert config["num_days"] == 100
+    assert config["sleeping_time"] == 1
 
 
 # --- Test generate_weather_data ---

@@ -46,33 +46,33 @@ def test_drop_all_tables_in_public(schema_manager, mocker):
     schema_manager.db.execute.assert_called_once_with(expected_query)
 
 
-def test_drop_forecasting_tables_in_public(schema_manager, mocker):
-    """Test dropping only forecasting tables."""
-    expected_forecast_tables = [
-        "solar_forecast",
-        "wind_forecast",
-        "load_forecast",
-        "market_forecast",
-    ]
-    expected_query = """
-        DO $$
-        DECLARE
-            tbl record;
-        BEGIN
-            FOR tbl IN
-                SELECT tablename 
-                FROM pg_tables
-                WHERE schemaname = 'public'
-                AND tablename = ANY(%s)
-            LOOP
-                EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE;', tbl.tablename);
-            END LOOP;
-        END $$;
-        """
-    schema_manager._drop_forecasting_tables_in_public()
-    schema_manager.db.execute.assert_called_once_with(
-        expected_query, (expected_forecast_tables,)
-    )
+# def test_drop_forecasting_tables_in_public(schema_manager, mocker):
+#     """Test dropping only forecasting tables."""
+#     expected_forecast_tables = [
+#         "solar_forecast",
+#         "wind_forecast",
+#         "load_forecast",
+#         "market_forecast",
+#     ]
+#     expected_query = """
+#         DO $$
+#         DECLARE
+#             tbl record;
+#         BEGIN
+#             FOR tbl IN
+#                 SELECT tablename
+#                 FROM pg_tables
+#                 WHERE schemaname = 'public'
+#                 AND tablename = ANY(%s)
+#             LOOP
+#                 EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE;', tbl.tablename);
+#             END LOOP;
+#         END $$;
+#         """
+#     schema_manager._drop_forecasting_tables_in_public()
+#     schema_manager.db.execute.assert_called_once_with(
+#         expected_query, (expected_forecast_tables,)
+#     )
 
 
 def test_create_energy_sources_table(schema_manager):

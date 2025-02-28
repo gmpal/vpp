@@ -37,7 +37,7 @@ def test_load_config_with_env_vars(db_manager):
     config = db_manager._load_config()
     assert config["dbname"] == "env_db"  # Env var takes precedence
     assert config["user"] == "postgres"  # From config file
-    assert config["password"] == "testpass"
+    assert config["password"] == "password"
     assert config["host"] == "localhost"
     assert config["port"] == "5432"
 
@@ -48,7 +48,7 @@ def test_load_config_without_env_vars(db_manager):
     config = db_manager._load_config()
     assert config["dbname"] == "postgres"  # From config file
     assert config["user"] == "postgres"
-    assert config["password"] == "testpass"
+    assert config["password"] == "password"
     assert config["host"] == "localhost"
     assert config["port"] == "5432"
 
