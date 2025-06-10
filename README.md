@@ -134,5 +134,19 @@ The system is built as a collection of Dockerized microservices:
 ## Installation and Setup
 
    ```bash
-   docker-compose up --build
+   # 1. Start core infrastructure first
+docker-compose up -d timescaledb zookeeper kafka mlflow
+
+# 2. Start consumer (so it's ready to receive messages)
+docker-compose up -d consumer
+
+# 3. Wait a moment, then initialize database and start streaming
+docker-compose --profile init up db-init  # Run without -d to see logs
+
+# 4. Start application services
+docker-compose up -d backend frontend
+
+# 5. Run tasks when needed
+docker-compose --profile task up --no-deps inference
+docker-compose --profile task up --no-deps training
    ```
