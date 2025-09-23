@@ -45,12 +45,11 @@ interface HistoricalDataPoint {
 
 interface ForecastedDataPoint {
     timestamp: string;
-    yhat: number;
-    yhat_lower: number;
-    yhat_upper: number;
+    value: number;
 }
 
 const CombinedDataViewer: React.FC<CombinedDataViewerProps> = ({ source, sourceId, start, end, top }) => {
+    console.log('CombinedDataViewer rendered with:', { source, sourceId, start, end, top });
     const [historicalData, setHistoricalData] = useState<HistoricalDataPoint[]>([]);
     const [forecastedData, setForecastedData] = useState<ForecastedDataPoint[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
@@ -111,7 +110,7 @@ const CombinedDataViewer: React.FC<CombinedDataViewerProps> = ({ source, sourceI
         label: 'Forecasted Data',
         data: forecastedData.map((d) => ({
             x: new Date(d.timestamp),
-            y: d.yhat,
+            y: d.value,
         })),
         borderColor: 'rgba(255, 99, 132, 1)',
         backgroundColor: 'rgba(255, 99, 132, 0.2)',
@@ -119,9 +118,29 @@ const CombinedDataViewer: React.FC<CombinedDataViewerProps> = ({ source, sourceI
         tension: 0.4,
     };
 
+    // DEBUG: Print the datasets
+    console.log('=== DATASET DEBUG ===');
+    console.log('Historical dataset:', {
+        label: historicalDataset.label,
+        dataCount: historicalDataset.data.length,
+        firstPoint: historicalDataset.data[0],
+        lastPoint: historicalDataset.data[historicalDataset.data.length - 1],
+        sampleData: historicalDataset.data.slice(0, 3)
+    });
+
+    console.log('Forecasted dataset:', {
+        label: forecastedDataset.label,
+        dataCount: forecastedDataset.data.length,
+        firstPoint: forecastedDataset.data[0],
+        lastPoint: forecastedDataset.data[forecastedDataset.data.length - 1],
+        sampleData: forecastedDataset.data.slice(0, 3)
+    });
+
+
     const data = {
         datasets: [historicalDataset, forecastedDataset],
     };
+
 
     const options: ChartOptions<'line'> = {
         responsive: true,
