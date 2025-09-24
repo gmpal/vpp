@@ -1,152 +1,158 @@
-![Tests](https://github.com/gmpal/vpp/workflows/Run%20Pytest%20Suite/badge.svg)
-![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/gmpal/ecfd0b8a247e4da2abafbdc142d7d01b/raw/coverage.json)
+# Virtual Power Plant (VPP) Simulation
 
-## Project Description
+[![Run Pytest Suite](https://github.com/gmpal/vpp/workflows/Run%20Pytest%20Suite/badge.svg)](https://github.com/gmpal/vpp/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This project simulates a **Virtual Power Plant (VPP)** that leverages synthetic data and modular microservices to emulate a real-world distributed energy system. The core idea is to generate synthetic data representing various energy sources and grid parameters, then process, forecast, and optimize energy management decisions in near real time.
-
-### Key Components
-
-1. **Synthetic Data Generation & Ingestion:**
-   - **Synthetic Data Sources:**  
-     Using specialized libraries, synthetic weather data (for solar and wind generation), grid load, and market price data are generated to mimic real operating conditions.
-   - **Data Streaming & Storage:**  
-     A dedicated **db-init** service stores a portion of the generated files locally. The remaining data is streamed in real time via Kafka—each source having its own producer—to simulate live data feeds. A centralized consumer then ingests this data and writes it into a TimescaleDB database for further processing.
-
-2. **Forecasting Pipeline:**
-   - **Training Pipeline:**  
-     Scheduled to run every 60 minutes, the training pipeline performs time series cross-validation on the incoming data. It compares multiple univariate machine learning models for each data source and selects the best-performing model, optionally tuning hyperparameters. All experiments and model performance metrics are logged in MLflow for tracking and reproducibility.
-   - **Inference Pipeline:**  
-     Running every 5 minutes, the inference pipeline retrieves the best model for each source and generates 30-step ahead forecasts. This simulates a scenario where, for instance, a forecast generated at 6 pm is used to predict the day-ahead market conditions.
-
-3. **Modularity & Extensibility:**
-   - **Adding New Sources:**  
-     The frontend allows users to manually add new data sources, making it easy to extend the system.
-   - **Battery Module:**  
-     A separate module is dedicated to managing batteries. Users can add battery configurations that are then integrated into the overall optimization process.
-   - **Additional Streams:**  
-     In addition to generation data, the system simulates grid load and market price streams to reflect broader system dynamics.
-
-4. **Optimization Module:**
-   - Using PuLP, the system performs a linear optimization that combines forecast data with battery state information. The optimization module determines the best strategy for the next 30 time steps—providing decisions on grid buying/selling as well as battery charge/discharge—to maximize efficiency and profitability for the VPP.
-
-The overall architecture is fully containerized using Docker, enabling scalable deployments on AWS and simplifying local development with tools like Docker Compose.
-
----
-
-## README.md
-
-```markdown
-# Virtual Power Plant (VPP) Simulation System
-
-A modular, containerized microservices system for simulating a Virtual Power Plant. The project integrates synthetic data generation, real-time data streaming, forecasting pipelines, and an optimization module to emulate energy management decisions for distributed energy resources.
+A modular, containerized microservices system for simulating a Virtual Power Plant. The project integrates synthetic data generation, real-time data streaming with Kafka, automated machine learning forecasting with MLflow, and linear optimization with PuLP to emulate energy management decisions for distributed energy resources.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Architecture](#architecture)
-- [Components](#components)
-  - [Synthetic Data Generation & Ingestion](#synthetic-data-generation--ingestion)
-  - [Forecasting Pipeline](#forecasting-pipeline)
-  - [Optimization Module](#optimization-module)
-  - [Frontend & Battery Management](#frontend--battery-management)
+- [Key Features](#key-features)
+- [System Architecture](#system-architecture)
+- [Technology Stack](#technology-stack)
 - [Prerequisites](#prerequisites)
 - [Installation and Setup](#installation-and-setup)
 - [Usage](#usage)
-- [Deployment](#deployment)
+- [API Overview](#api-overview)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
-- [License](#license)
 
 ## Overview
 
-This project simulates a Virtual Power Plant that uses synthetic data to mimic real-time energy production and consumption. The system streams generated data via Kafka to a centralized TimescaleDB and processes it through dedicated forecasting pipelines. The forecasts are then fed into an optimization module (using PuLP) to determine optimal energy management strategies—deciding when to buy, sell, charge, or discharge batteries.
+This project simulates a **Virtual Power Plant (VPP)** that leverages synthetic data and modular microservices to emulate a real-world distributed energy system. The core idea is to generate synthetic data representing various energy sources and grid parameters, then process, forecast, and optimize energy management decisions in near real-time.
 
-## Architecture
+The system is fully containerized using Docker, enabling scalable deployments and simplified local development with Docker Compose.
 
-The system is built as a collection of Dockerized microservices:
+## Key Features
 
-- **db-init Service:**  
-  Initializes the database, stores part of the synthetic data locally, and streams the remaining data to simulate real-time ingestion via Kafka.
+-   **Synthetic Data Generation**: Generates realistic time-series data for solar (`pvlib`), wind (`windpowerlib`), grid load, and market prices.
+-   **Real-Time Data Streaming**: Streams generated data via Kafka producers to a central consumer, simulating live data feeds from distributed assets.
+-   **Time-Series Database**: Ingests and stores all historical and forecasted data in a TimescaleDB instance for efficient querying and analysis.
+-   **Automated ML Forecasting Pipelines**:
+    -   **Training Pipeline**: Runs on a schedule (every 60 mins) to perform time-series cross-validation, compare models (e.g., RandomForest), and log experiments, metrics, and models to **MLflow**.
+    -   **Inference Pipeline**: Runs frequently (every 5 mins) to load the best models from the MLflow Registry and generate 30-step-ahead forecasts.
+-   **Linear Optimization**: Utilizes **PuLP** to solve an optimization problem that determines the most profitable strategy for battery charging/discharging and grid energy trading based on forecasts.
+-   **Interactive Frontend**: A React-based UI allows users to add new energy sources and batteries on-the-fly, and visualize historical data, forecasts, and optimization results.
+-   **Modular Microservices**: The entire system is broken down into independent, containerized services (backend, frontend, database, Kafka, pipelines) for scalability and maintainability.
 
-- **Backend Service:**  
-  Handles API requests, integrates with MLflow for experiment tracking, and communicates with the database and Kafka.
+## System Architecture
 
-- **Frontend Service:**  
-  A user interface built with React, allowing manual addition of data sources and batteries.
+The VPP simulation is composed of several Dockerized microservices that communicate via REST APIs and Kafka messaging:
 
-- **Forecasting Pipelines:**  
-  - **Training Pipeline:** Runs every 60 minutes to perform time series cross-validation, compare multiple models, and log results in MLflow.
-  - **Inference Pipeline:** Runs every 5 minutes to perform 30-step ahead forecasts for the day-ahead market (e.g., forecasts generated at 6 pm).
+-   **`frontend`**: A React application providing the user interface for monitoring, managing resources, and visualizing data.
+-   **`backend`**: A FastAPI application that serves the REST API, handles requests from the frontend, and interacts with the database and MLflow.
+-   **`db-init`**: An initialization service that sets up the database schema, loads an initial batch of historical data, and starts the Kafka producers to stream the remaining synthetic data.
+-   **`consumer`**: A centralized Kafka consumer that listens to all data topics (`solar`, `wind`, `load`, `market`) and writes the incoming data to TimescaleDB.
+-   **`training-pipeline`**: A scheduled task that runs periodically to train forecasting models on the latest data from TimescaleDB and register the best models in MLflow.
+-   **`inference-pipeline`**: A scheduled task that fetches the latest models from MLflow to generate and save new forecasts to the database.
+-   **Infrastructure**:
+    -   **`timescaledb`**: The core time-series database for storing all data.
+    -   **`kafka` & `zookeeper`**: The messaging backbone for real-time data streaming.
+    -   **`mlflow`**: The MLOps platform for experiment tracking, model storage, and model registry.
 
-- **Optimization Module:**  
-  Uses forecasted data and battery states to perform linear optimization with PuLP, outputting strategies for grid interactions and battery management over the next 30 time steps.
+## Technology Stack
 
-## Components
-
-### Synthetic Data Generation & Ingestion
-
-- **Data Generation:**  
-  Synthetic weather data, wind and solar generation, grid load, and market prices are generated using libraries like `pvlib` and `windpowerlib`. Each data source is uniquely identified.
-  
-- **Data Ingestion:**  
-  The `db-init` service partially stores the generated files and streams the remainder via Kafka (with one producer per source). A centralized consumer writes the incoming data into a TimescaleDB database.
-
-### Forecasting Pipeline
-
-- **Training Pipeline:**  
-  - Performs time series cross-validation.
-  - Compares multiple univariate machine learning models (one per source).
-  - Optionally tunes hyperparameters.
-  - Logs all experiments and metrics in MLflow.
-  - Scheduled to run every 60 minutes.
-
-- **Inference Pipeline:**  
-  - Retrieves the best-performing model for each source.
-  - Generates 30-step ahead forecasts (e.g., for the next day-ahead market starting at 6 pm).
-  - Scheduled to run every 5 minutes.
-
-### Optimization Module
-
-- **Purpose:**  
-  Uses forecast data alongside battery states and market information to compute the optimal strategy using PuLP.
-- **Output:**  
-  Provides recommendations for grid buy/sell actions and battery charge/discharge schedules over the next 30 time steps.
-- **Key Features:**  
-  - Integrates forecasts from renewable sources, grid load, and market price.
-  - Supports individual battery management.
-  - Easily extensible for additional constraints or decision variables.
-
-### Frontend & Battery Management
-
-- **Frontend:**  
-  A React-based UI that allows users to manually add new energy sources or battery configurations.
-- **Battery Module:**  
-  Manages battery information and integrates with the optimization module to ensure accurate state-of-charge tracking and scheduling.
+| Category              | Technology                                       | Purpose                                                 |
+| --------------------- | ------------------------------------------------ | ------------------------------------------------------- |
+| **Backend**           | Python, FastAPI                                  | REST API development and business logic.                |
+| **Frontend**          | React, TypeScript, Material-UI, Chart.js         | Interactive user interface and data visualization.      |
+| **Database**          | TimescaleDB (PostgreSQL)                         | Storing and querying time-series data.                  |
+| **Data Streaming**    | Apache Kafka                                     | Real-time messaging between data sources and consumer.  |
+| **ML/Forecasting**    | Scikit-learn, pmdarima, Prophet                  | Time-series forecasting models.                         |
+| **MLOps**             | MLflow                                           | Experiment tracking, model registry, and logging.       |
+| **Optimization**      | PuLP                                             | Linear programming for energy dispatch optimization.    |
+| **Containerization**  | Docker, Docker Compose                           | Containerizing and orchestrating all microservices.     |
+| **Data Generation**   | `pvlib`, `windpowerlib`                          | Creating synthetic solar and wind energy data.          |
 
 ## Prerequisites
 
-- **Docker & Docker Compose:** For containerizing and orchestrating services.
-- **Python 3.8/3.9:** For backend services and forecasting pipelines.
-- **Node.js:** For building and running the frontend.
-- **AWS Account:** For deploying services using AWS ECS, ECR, etc. (if desired).
+-   Docker & Docker Compose
+-   Python 3.8+ (for running scripts outside Docker)
+-   Node.js (for frontend development outside Docker)
 
 ## Installation and Setup
 
-   ```bash
-   # 1. Start core infrastructure first
-docker-compose up -d timescaledb zookeeper kafka mlflow
+The entire system can be set up and run locally using Docker Compose.
 
-# 2. Start consumer (so it's ready to receive messages)
-docker-compose up -d consumer
+1.  **Start Core Infrastructure:**
+    Launch the database, Kafka, and MLflow services in detached mode.
+    ```bash
+    docker-compose up -d timescaledb zookeeper kafka mlflow
+    ```
 
-# 3. Wait a moment, then initialize database and start streaming
-docker-compose --profile init up db-init  # Run without -d to see logs
+2.  **Start the Data Consumer:**
+    Start the consumer service so it's ready to receive messages from the producers.
+    ```bash
+    docker-compose up -d consumer
+    ```
+    *Wait a few moments for the infrastructure and consumer to initialize.*
 
-# 4. Start application services
-docker-compose up -d backend frontend
+3.  **Initialize Database and Start Streaming:**
+    This command runs the `db-init` service, which populates the database with initial data and starts streaming the rest via Kafka producers. The `--profile init` flag activates the service defined in the `init` profile.
+    ```bash
+    docker-compose --profile init up db-init
+    ```
+    *(Run this command without `-d` to see the logs and confirm that data is being produced).*
 
-# 5. Run tasks when needed
-docker-compose --profile task up --no-deps inference
-docker-compose --profile task up --no-deps training
-   ```
+4.  **Start Application Services:**
+    Launch the backend API and the frontend UI.
+    ```bash
+    docker-compose up -d backend frontend
+    ```
+
+5.  **Run Scheduled Tasks (Manually):**
+    The training and inference pipelines are defined under the `task` profile and can be run on-demand for development or testing.
+    ```bash
+    # Run the training pipeline
+    docker-compose --profile task up --no-deps training
+
+    # Run the inference pipeline
+    docker-compose --profile task up --no-deps inference
+    ```
+
+Once all services are running, you can access the different components:
+-   **Frontend UI**: `http://localhost:3000`
+-   **Backend API Docs**: `http://localhost:8000/docs`
+-   **MLflow UI**: `http://localhost:5000`
+
+## Usage
+
+After starting the services, the system will begin simulating the VPP:
+
+1.  **Data Generation & Streaming**: The `db-init` service will continuously produce new data points for all sources and push them to Kafka topics.
+2.  **Data Ingestion**: The `consumer` service will ingest this data and save it to TimescaleDB.
+3.  **Forecasting**: The `training` and `inference` pipelines will run automatically on their schedules (or you can trigger them manually as shown above) to keep the forecasts up-to-date.
+4.  **Interacting with the UI**:
+    -   Navigate to `http://localhost:3000`.
+    -   **Dashboard**: Add new solar/wind generators or batteries. View the current status of all devices.
+    -   **Renewables/Grid/Market Tabs**: Visualize historical and forecasted data for different sources.
+    -   **Optimization Tab**: Trigger the optimization engine and view the recommended battery and grid dispatch strategy.
+
+## API Overview
+
+The backend provides a RESTful API for interacting with the VPP. Key endpoints include:
+
+-   `GET /health`: Health check for the backend service.
+-   `GET /api/batteries`: Get the status of all batteries.
+-   `POST /api/batteries`: Add a new battery to the system.
+-   `POST /api/batteries/{battery_id}/charge`: Charge a specific battery.
+-   `GET /api/add-source?source_type={type}`: Add a new renewable energy source (`solar` or `wind`).
+-   `GET /api/historical/{source}`: Query historical data for a source (e.g., `solar`, `load`).
+-   `GET /api/forecasted/{source}`: Query forecasted data for a source.
+-   `POST /api/optimize`: Run the optimization algorithm and get the dispatch strategy.
+
+For a full list of endpoints and their parameters, see the auto-generated Swagger documentation at `http://localhost:8000/docs`.
+
+## Troubleshooting
+
+-   **Service Fails to Start**: Check the logs for the specific service using `docker-compose logs <service_name>`.
+-   **No Data in Frontend**:
+    -   Ensure the `db-init` service ran successfully and is producing messages.
+    -   Check the `consumer` logs to see if it's receiving messages and writing to the database.
+    -   Verify the `backend` can connect to `timescaledb`.
+-   **MLflow UI is Empty**: Make sure the `training` pipeline has run at least once. Trigger it manually if needed.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a pull request or open an issue for any bugs or feature requests.
