@@ -1,9 +1,10 @@
 import time
 import json
-import pandas as pd
 import os
 import configparser
+import pandas as pd
 
+from datetime import datetime
 from kafka import KafkaConsumer, KafkaProducer
 from backend.src.db import DatabaseManager, CrudManager
 
@@ -138,7 +139,6 @@ def kafka_consume_centralized():
     The extracted information is then saved to a database.
     Topics:
         - "solar"
-        - "wind"
         - "load"
         - "market"
     Kafka Consumer Configuration:
@@ -159,7 +159,6 @@ def kafka_consume_centralized():
     print("Using bootstrap servers:", bs, flush=True)
     consumer = KafkaConsumer(
         "solar",
-        "wind",
         "load",
         "market",
         bootstrap_servers=bs,
@@ -182,7 +181,11 @@ def kafka_consume_centralized():
 
         print(f"Received {topic} message from {source_id} at {timestamp}")
 
-        time_obj = pd.to_datetime(timestamp)
+        # Assuming the timestamp is in ISO format like "2025-10-29T14:30:00Z"
+        # The 'Z' for Zulu/UTC might need to be handled if present.
+        if timestamp.endswith("Z"):
+            timestamp = timestamp[:-1] + "+00:00"
+        time_obj = datetime.fromisoformat(timestamp)
 
         crud.save_to_db(topic, time_obj, source_id, value)
 

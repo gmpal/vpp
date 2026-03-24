@@ -11,7 +11,7 @@ from backend.src.storage.battery import Battery
 def mock_db_manager():
     """Fixture to create a mocked DatabaseManager."""
     db = Mock(spec=DatabaseManager)
-    db.renewables = ["solar", "wind"]  # Match the expected renewables
+    db.renewables = ["solar"]
     db.execute = Mock()  # Mock the execute method
     return db
 
@@ -38,7 +38,7 @@ def mock_battery():
 def test_init(crud_manager, mock_db_manager):
     """Test CrudManager initialization."""
     assert crud_manager.db == mock_db_manager
-    assert crud_manager.db.renewables == ["solar", "wind"]
+    assert crud_manager.db.renewables == ["solar"]
 
 
 @patch("pandas.Timestamp")

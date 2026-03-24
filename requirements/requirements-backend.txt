@@ -1,41 +1,30 @@
-pandas
-numpy
-scikit-learn
-matplotlib
-seaborn
-statsmodels
-scipy
-xgboost
-lightgbm
-joblib
-pvlib
-windpowerlib
-prophet
-kafka-python
-prometheus_client
-pulp
+# API Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
 
-fastapi 
-uvicorn 
+# Database Connection (pick one depending on if you use async)
+psycopg2-binary==2.9.9  # For standard synchronous code
+# asyncpg==0.29.0          # If you are writing async database queries with FastAPI
 
-psycopg2-binary
+# Optimization Engine
+pulp==2.7.0
 
-mlflow 
-# evidently 
-optuna 
-# tensorflow 
-# keras
-# torch
-# pytorch-lightning
-# pytorch-forecasting
-# apache-airflow
+# For communicating with the MLflow Tracking Server (e.g., to find the best model)
+# Use 'mlflow-skinny' - it's a lightweight client without the heavy dependencies.
+mlflow-skinny==2.9.2
 
-pmdarima
-plotly
-# darts
-asyncpg
+# Data manipulation for API payloads or DB results. Keep if necessary, but be aware it's heavy.
+pandas==2.0.3
+numpy==1.24.3
 
+# For triggering jobs or sending messages (if needed)
+kafka-python==2.0.2
 
+# Data generation dependencies (needed for sources.py which imports generation.py)
+pvlib==0.10.3
+windpowerlib==0.2.1
 
-
-
+# HTTP client for async external API calls (weather proxy)
+httpx==0.27.0

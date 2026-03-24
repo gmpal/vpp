@@ -1,0 +1,58 @@
+/* MapView.css - Additional styling for the map */
+
+/* Smooth marker animations */
+.leaflet-marker-icon {
+  transition: transform 0.3s ease-in-out;
+}
+
+.leaflet-marker-icon:hover {
+  transform: scale(1.2);
+  filter: drop-shadow(0 0 10px rgba(255, 165, 0, 0.8));
+}
+
+/* Pulse animation for production circles */
+@keyframes pulse {
+  0% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0.3;
+  }
+}
+
+.production-circle {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* Map container */
+.leaflet-container {
+  font-family: 'Roboto', sans-serif;
+}
+
+/* Custom popup styling */
+.leaflet-popup-content-wrapper {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.leaflet-popup-content {
+  margin: 16px;
+  min-width: 200px;
+}
+
+/* Zoom controls */
+.leaflet-control-zoom {
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.leaflet-control-zoom a {
+  font-size: 18px !important;
+  line-height: 32px !important;
+  width: 32px !important;
+  height: 32px !important;
+}

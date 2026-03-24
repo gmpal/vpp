@@ -71,7 +71,6 @@ def test_optimize_integration(client, reset_batteries, schema_manager, mocker, c
     mock_optimization_data = pd.DataFrame(
         {
             "solar": [100.0],
-            "wind": [50.0],
             "load": [120.0],
             "price": [0.1],
         },
@@ -223,7 +222,7 @@ def test_query_device_counts_success(client, crud_manager, schema_manager):
     # Check response
     assert response.status_code == 200
     data = response.json()
-    assert data == {"solar": 1, "wind": 0}
+    assert data == {"solar": 1}
 
 
 def test_optimize_strategy_no_batteries(client, reset_batteries):

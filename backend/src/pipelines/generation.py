@@ -1,7 +1,5 @@
 import pandas as pd
 import numpy as np
-from windpowerlib import ModelChain, WindTurbine
-from windpowerlib import create_power_curve
 import pvlib
 from pvlib.pvsystem import PVSystem
 from pvlib.modelchain import ModelChain as PVModelChain
@@ -42,6 +40,8 @@ def generate_weather_data(
     freq: str = "h",
     output_path: str = "../data/",
     source_id: str = 1,
+    latitude: float = None,
+    longitude: float = None,
 ) -> pd.DataFrame:
     """
     Generate synthetic weather data for a specified number of days starting from a given date.
@@ -134,116 +134,14 @@ def generate_weather_data(
     return weather_data
 
 
-def generate_wind_data(
-    weather_data_path: str = None,
-    weather_data: pd.DataFrame = None,
-    output_path: str = "../data/",
-    plot: bool = False,
-    source_id: str = 1,
-) -> pd.DataFrame:
-    """
-    Simulates wind turbine power output based on weather data and a predefined power curve.
-    Parameters:
-    weather_data_path (str): Path to the CSV file containing weather data with columns 'wind_speed', 'temperature', and 'pressure'.
-    output_path (str, optional): Path to save the simulated power output CSV file. Defaults to "../data/wind_turbine_power_output.csv".
-    plot (bool, optional): If True, plots the simulated power output. Defaults to False.
-    Returns:
-    pd.DataFrame: DataFrame containing the simulated power output in kW.
-    """
-
-    # Define power curve as a DataFrame
-    power_curve = pd.DataFrame(
-        {
-            "wind_speed": [
-                0,
-                3,
-                4,
-                5,
-                6,
-                7,
-                8,
-                9,
-                10,
-                11,
-                12,
-                13,
-                14,
-                15,
-                16,
-                17,
-                18,
-                25,
-            ],  # Wind speeds (m/s)
-            "value": [
-                0.0,
-                0.0,
-                0.010,
-                0.050,
-                0.100,
-                0.300,
-                0.700,
-                1.200,
-                2.000,
-                2.500,
-                3.000,
-                3.050,
-                3.050,
-                3.050,
-                3.050,
-                3.050,
-                2.500,
-                0.0,
-            ],  # Power output (kW)
-        }
-    )
-
-    # Wind turbine specifications
-    turbine_specifications = {
-        "turbine_type": "custom_turbine",
-        "hub_height": 100,  # Hub height in meters
-        "power_curve": power_curve,  # Directly pass the DataFrame
-    }
-
-    # Create the WindTurbine object
-    turbine = WindTurbine(**turbine_specifications)
-
-    if weather_data is None:
-        if weather_data_path is None:
-            raise ValueError(
-                "Either weather_data_path or weather_data must be provided."
-            )
-        # 2. Define weather data
-        weather_data = pd.read_csv(
-            weather_data_path, index_col=0, parse_dates=True, header=[0, 1]
-        )
-
-    weather_data = weather_data[["wind_speed", "temperature", "pressure"]]
-
-    # 3. Simulate wind power generation
-    modelchain = ModelChain(turbine)
-    modelchain.run_model(weather_data)
-
-    power_output = modelchain.power_output  # Power output in kW
-
-    if output_path:
-        power_output.to_csv(output_path + f"{source_id}_wind.csv")
-
-    if plot:
-        power_output.plot(
-            title="Simulated Wind Turbine Power Output",
-            xlabel="Time",
-            ylabel="Power (kW)",
-        )
-
-    return power_output
-
-
 def generate_pv_data(
     weather_data_path: str = None,
     weather_data: pd.DataFrame = None,
     output_path: str = "../data/",
     plot: bool = False,
     source_id: str = 1,
+    latitude: float = None,
+    longitude: float = None,
 ) -> pd.DataFrame:
     """
     Generate photovoltaic (PV) data based on weather data and simulate solar power generation.
@@ -259,8 +157,11 @@ def generate_pv_data(
     """
 
     # 1. Define the site location
-    latitude = 48.2
-    longitude = 16.37
+    # Use provided coordinates or default to Vienna
+    if latitude is None:
+        latitude = 48.2
+    if longitude is None:
+        longitude = 16.37
     tz = "Europe/Vienna"
 
     site = Location(latitude, longitude, tz=tz)

@@ -1,37 +1,26 @@
-# Production Dockerfile: frontend/Dockerfile
-
+# NB The context is './frontend'
 # Stage 1: Build the frontend
-FROM node:16-alpine AS build
-
-# Set working directory
+FROM node:20-alpine AS build
 WORKDIR /app
 
-ENV REACT_APP_API_BASE_URL=http://vpp-backend-load-balancer-205415068.eu-central-1.elb.amazonaws.com/api
-
-# Install dependencies
+# BEFORE: COPY ./frontend/package.json ./
+# AFTER: , so the path is just 'package.json'
 COPY package.json package-lock.json ./
+
 RUN npm install
 
-# Copy source code
+# BEFORE: COPY ./frontend ./
+# AFTER: The context is now './frontend', so we copy everything from its root.
 COPY . .
 
-# Build the frontend
+ARG REACT_APP_API_BASE_URL
+ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
+
 RUN npm run build
 
 # Stage 2: Serve the frontend with Nginx
 FROM nginx:stable-alpine
-
-# Remove default Nginx static assets
 RUN rm -rf /usr/share/nginx/html/*
-
-# Copy the build output to Nginx's html directory
 COPY --from=build /app/build /usr/share/nginx/html
-
-# (Optional) Copy custom Nginx configuration if needed
-# COPY nginx.conf /etc/nginx/nginx.conf
-
-# Expose port 80
 EXPOSE 80
-
-# Start Nginx
 CMD ["nginx", "-g", "daemon off;"]

@@ -1,11 +1,5 @@
-// Dashboard.tsx
 import React, { useEffect, useState } from 'react';
-import {
-    fetchSourceIDs,
-    DeviceCounts,
-} from './api.ts';
-import { DateRange } from '@mui/x-date-pickers-pro/DateRangePicker';
-
+import { fetchSourceIDs, fetchHistoricalData, HistoricalDataPoint } from './api.ts';
 import {
     Container,
     Typography,
@@ -16,102 +10,129 @@ import {
     InputLabel,
     Select,
     MenuItem,
-
 } from '@mui/material';
-import CombinedDataViewer from './CombinedDataViewer.tsx';
-import TimeRangeSelector from './TimeRangeSelector.tsx';
+import {
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+} from 'recharts';
 
-function safeToISOString(date: any): string | undefined {
-    if (!date) return undefined; // Check for null/undefined
-    const d = new Date(date);
-    return isNaN(d.getTime()) ? undefined : d.toISOString();
+function formatTimestamp(timestamp: string): string {
+    const d = new Date(timestamp);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mo = String(d.getMonth() + 1).padStart(2, '0');
+    return `${hh}:${mm} ${dd}/${mo}`;
 }
+
+const SOURCE_COLORS: Record<string, string> = {
+    solar: '#f0c040',
+    load: '#ef5350',
+};
 
 const Renewables: React.FC = () => {
     const [selectedSource, setSelectedSource] = useState<string>('solar');
-    const [selectedSourceID, setSelectedSourceID] = useState<string>('3');
-    const [selectedRange, setSelectedRange] = useState<DateRange<Date>>([null, null]);
-
+    const [selectedSourceID, setSelectedSourceID] = useState<string>('');
     const [sourceIDs, setSourceIDs] = useState<string[]>([]);
     const [selectedTopN, setSelectedTopN] = useState<number>(50);
+    const [chartData, setChartData] = useState<{ time: string; value: number }[]>([]);
 
     useEffect(() => {
         async function updateSourceIDs() {
             if (selectedSource === 'market' || selectedSource === 'load') {
-                setSourceIDs([]);      // Clear IDs since not applicable
-                setSelectedSourceID(''); // Reset source ID
+                setSourceIDs([]);
+                setSelectedSourceID('');
                 return;
             }
             try {
                 const ids = await fetchSourceIDs(selectedSource);
                 setSourceIDs(ids);
-                // Optionally reset selectedSourceID if current one is not in new list
                 if (!ids.includes(selectedSourceID)) {
-                    setSelectedSourceID(ids[0] || '');  // select first if available
+                    setSelectedSourceID(ids[0] || '');
                 }
             } catch (error) {
                 console.error('Error fetching source IDs:', error);
             }
         }
-
         updateSourceIDs();
-    }, [selectedSource, selectedSourceID]);
+    }, [selectedSource]);
 
+    useEffect(() => {
+        async function loadHistorical() {
+            try {
+                const sourceId = selectedSource === 'solar'
+                    ? selectedSourceID
+                    : undefined;
+                if (selectedSource === 'solar' && !sourceId) {
+                    setChartData([]);
+                    return;
+                }
+                const data: HistoricalDataPoint[] = await fetchHistoricalData(
+                    selectedSource,
+                    sourceId,
+                    undefined,
+                    undefined,
+                    selectedTopN
+                );
+                setChartData(data.map(p => ({
+                    time: formatTimestamp(p.timestamp),
+                    value: p.value,
+                })));
+            } catch (err) {
+                console.error('Error fetching historical data:', err);
+                setChartData([]);
+            }
+        }
+        loadHistorical();
+    }, [selectedSource, selectedSourceID, selectedTopN]);
+
+    const lineColor = SOURCE_COLORS[selectedSource] ?? '#8884d8';
 
     return (
-
         <Container maxWidth="lg" sx={{ py: 4 }}>
-
-            {/* Combined  and ing Data Plot */}
             <Box my={4}>
                 <Typography variant="h2" component="h1" gutterBottom align="center">
-                    Combined  and Forecasted Data
+                    Renewables
                 </Typography>
 
                 <Grid item xs={12}>
                     <Paper elevation={3} sx={{ p: 2 }}>
                         <FormControl fullWidth>
-                            <InputLabel id="source-forecast-select-label">Select Source</InputLabel>
+                            <InputLabel id="source-select-label">Select Source</InputLabel>
                             <Select
-                                labelId="source-forecast-select-label"
-                                id="source-forecast-select"
+                                labelId="source-select-label"
+                                id="source-select"
                                 value={selectedSource}
-                                label="Select  Source"
+                                label="Select Source"
                                 onChange={(e) => setSelectedSource(e.target.value as string)}
                             >
                                 <MenuItem value="solar">Solar</MenuItem>
-                                <MenuItem value="wind">Wind</MenuItem>
                                 <MenuItem value="load">Load</MenuItem>
                             </Select>
                         </FormControl>
                     </Paper>
                 </Grid>
 
-                {/* ing Source ID Selection Menu */}
-                {
-                    selectedSource !== 'market' && selectedSource !== 'load' && (
-                        <Grid item xs={12}>
-                            <Paper elevation={3} sx={{ p: 2 }}>
-                                <FormControl fullWidth>
-                                    <InputLabel id="source-id-forecast-select-label">Select Source ID</InputLabel>
-                                    <Select
-                                        labelId="source-id-forecast-select-label"
-                                        id="source-id-forecast-select"
-                                        value={selectedSourceID}
-                                        label="Select Source ID "
-                                        onChange={(e) => setSelectedSourceID(e.target.value as string)}
-                                    >
-                                        {sourceIDs.map((id) => (
-                                            <MenuItem key={id} value={id}>{id}</MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
-                            </Paper>
-                        </Grid>
-                    )
-                }
+                {selectedSource !== 'market' && selectedSource !== 'load' && (
+                    <Grid item xs={12}>
+                        <Paper elevation={3} sx={{ p: 2 }}>
+                            <FormControl fullWidth>
+                                <InputLabel id="source-id-select-label">Select Source ID</InputLabel>
+                                <Select
+                                    labelId="source-id-select-label"
+                                    id="source-id-select"
+                                    value={selectedSourceID}
+                                    label="Select Source ID"
+                                    onChange={(e) => setSelectedSourceID(e.target.value as string)}
+                                >
+                                    {sourceIDs.map((id) => (
+                                        <MenuItem key={id} value={id}>{id}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Paper>
+                    </Grid>
+                )}
 
-                {/* TOP N SELECTION INPUT BOX */}
                 <Grid item xs={12}>
                     <Paper elevation={3} sx={{ p: 2 }}>
                         <FormControl fullWidth>
@@ -132,19 +153,35 @@ const Renewables: React.FC = () => {
                 </Grid>
 
                 <Paper elevation={3} sx={{ p: 2 }}>
-                    <CombinedDataViewer
-                        source={selectedSource}
-                        sourceId={selectedSourceID}
-                        start={safeToISOString(selectedRange[0])}
-                        end={safeToISOString(selectedRange[1])}
-                        top={selectedTopN}
-                    />
+                    {chartData.length === 0 ? (
+                        <Typography color="text.secondary" align="center" py={4}>No data</Typography>
+                    ) : (
+                        <ResponsiveContainer width="100%" height={300}>
+                            <LineChart data={chartData}>
+                                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                                <XAxis
+                                    dataKey="time"
+                                    tick={{ fontSize: 9, angle: -30, textAnchor: 'end' }}
+                                    height={50}
+                                />
+                                <YAxis tick={{ fontSize: 10 }} />
+                                <Tooltip />
+                                <Legend />
+                                <Line
+                                    type="monotone"
+                                    dataKey="value"
+                                    stroke={lineColor}
+                                    name={selectedSource.charAt(0).toUpperCase() + selectedSource.slice(1)}
+                                    dot={false}
+                                    strokeWidth={2}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    )}
                 </Paper>
-            </Box >
-
-        </Container >
+            </Box>
+        </Container>
     );
-
 };
 
 export default Renewables;

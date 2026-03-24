@@ -1,6 +1,8 @@
 import mlflow
 from mlflow.tracking import MlflowClient
 from backend.src.db import DatabaseManager, CrudManager, SchemaManager
+from backend.src.utils.logger import get_logger
+from backend.src.utils.data_utils import get_datasets_list
 import os
 import pickle
 import pandas as pd
@@ -11,34 +13,15 @@ warnings.filterwarnings(
     category=FutureWarning,
 )
 
+logger = get_logger(__name__)
+
 mlflow.set_tracking_uri("http://mlflow:5000")
-print(f"MLflow tracking URI set to: {mlflow.get_tracking_uri()}")
+logger.info(f"MLflow tracking URI set to: {mlflow.get_tracking_uri()}")
 
 client = MlflowClient()
 db_manager = DatabaseManager()
 crud_manager = CrudManager(db_manager)
 schema_manager = SchemaManager(db_manager)
-
-
-def get_datasets_list():
-    """
-    Returns a list of (dataset, source_id) tuples.
-    For renewable datasets, we retrieve all existing source_ids in the DB.
-    For non-renewable datasets (like load, market), source_id is None.
-    """
-    datasets_info = []
-
-    # 1) Loop over each renewable and its source_ids
-    for renewable in db_manager.renewables:
-        sids = crud_manager.query_source_ids(renewable)  # e.g., ['010780', 'XYZ', ...]
-        for sid in sids:
-            datasets_info.append((renewable, sid))
-
-    # 2) Add non-renewable datasets without source_id
-    for ds in ["load", "market"]:
-        datasets_info.append((ds, None))
-
-    return datasets_info
 
 
 def _load_model_from_registry(dataset, source_id):
@@ -80,13 +63,13 @@ def _load_model_from_registry(dataset, source_id):
                 break
 
         if not model_file:
-            print("  No .pkl model file found in the artifacts. Skipping.")
+            logger.info("  No .pkl model file found in the artifacts. Skipping.")
             return None
 
         with open(model_file, "rb") as f:
             model = pickle.load(f)
     except Exception as e:
-        print(f"  Error loading model pickle: {e}. Skipping.")
+        logger.info(f"  Error loading model pickle: {e}. Skipping.")
         return None
 
     return model
@@ -107,14 +90,23 @@ def _load_historical_data(dataset, source_id):
         ascending order by index. Returns None if no historical data is found.
     """
 
-    df = crud_manager.load_historical_data(dataset, source_id)
+    raw_data = crud_manager.load_historical_data(dataset, source_id)
 
-    # revert order of df (its stored in reverse order)
-    df = df.sort_index(ascending=True)
-
-    if df.empty:
-        print("  No historical data found in DB. Skipping forecast.")
+    # If the database returns an empty list, we're done.
+    if not raw_data:
+        logger.info("  No historical data found in DB. Skipping forecast.")
         return None
+
+    # Convert the list of dicts to a DataFrame
+    df = pd.DataFrame(raw_data)
+
+    # It's crucial to set the index and ensure the time column is the correct type.
+    df["time"] = pd.to_datetime(df["time"])
+    df = df.set_index("time")
+
+    # The original comment mentioned sorting. The new CRUD query already has
+    # "ORDER BY time", so this sort might be redundant, but it's safe to keep.
+    df = df.sort_index(ascending=True)
 
     return df
 
@@ -143,36 +135,36 @@ def inference_pipeline(
     """
 
     # Get the full list of all datasets we want to forecast
-    all_datasets = get_datasets_list()
-    print(f"=== Starting inference pipeline for {len(all_datasets)} datasets ===\n")
+    all_datasets = get_datasets_list(db_manager, crud_manager)
+    logger.info(f"=== Starting inference pipeline for {len(all_datasets)} datasets ===\n")
     for dataset, source_id in all_datasets:
         # 1) Construct the MLflow model URI
         model = _load_model_from_registry(dataset, source_id)
         if model is None:  # skip if model not found
             continue
-        print(f"  Model loaded for {dataset} ({source_id})")
+        logger.info(f"  Model loaded for {dataset} ({source_id})")
         # 2) Load historical data from DB
         df = _load_historical_data(dataset, source_id)
         if df is None:  # skip if no historical data
             continue
-        print(f"  Historical data loaded for {dataset} ({source_id})")
+        logger.info(f"  Historical data loaded for {dataset} ({source_id})")
         # 3) Predict future horizon
         try:
             forecast_series = model.predict(df, steps=forecast_horizon, freq=freq)
         except Exception as e:
-            print(f"  Model prediction error: {e}. Skipping.")
+            logger.info(f"  Model prediction error: {e}. Skipping.")
             continue
-        print(f"  Forecast completed for {dataset} ({source_id})")
+        logger.info(f"  Forecast completed for {dataset} ({source_id})")
         # 4) Build a DataFrame for the forecast
         df_forecast = pd.DataFrame(
             {"time": forecast_series.index, "value": forecast_series.values}
         ).set_index("time")
-        print(f"  Forecast DataFrame created for {dataset} ({source_id})")
+        logger.info(f"  Forecast DataFrame created for {dataset} ({source_id})")
         # 5) (Optional) Save forecast results to DB
         crud_manager.save_forecast(dataset, source_id, df_forecast)
-        print("  (Placeholder) Forecast saved to DB.")
+        logger.info("  (Placeholder) Forecast saved to DB.")
 
-    print("\n=== Inference pipeline complete! ===")
+    logger.info("\n=== Inference pipeline complete! ===")
 
 
 if __name__ == "__main__":

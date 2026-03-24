@@ -9,7 +9,7 @@ from backend.src.db.connection import DatabaseManager
 def mock_db_manager(mocker):
     """Fixture to create a mocked DatabaseManager."""
     db = Mock(spec=DatabaseManager)
-    db.renewables = ["solar", "wind"]  # Match the expected renewables
+    db.renewables = ["solar"]
     db.execute = Mock()  # Mock the execute method
     return db
 
@@ -23,7 +23,7 @@ def schema_manager(mock_db_manager):
 def test_init(schema_manager, mock_db_manager):
     """Test SchemaManager initialization."""
     assert schema_manager.db == mock_db_manager
-    assert schema_manager.db.renewables == ["solar", "wind"]
+    assert schema_manager.db.renewables == ["solar"]
 
 
 def test_drop_all_tables_in_public(schema_manager, mocker):
@@ -80,7 +80,7 @@ def test_create_energy_sources_table(schema_manager):
     expected_query = """
         CREATE TABLE energy_sources (
             source_id VARCHAR(50) PRIMARY KEY,
-            type VARCHAR(50) NOT NULL CHECK (type IN ('solar', 'wind')),
+            type VARCHAR(50) NOT NULL CHECK (type IN ('solar')),
             latitude FLOAT NOT NULL,
             longitude FLOAT NOT NULL,
             name VARCHAR(100),
@@ -162,7 +162,7 @@ def test_create_load_forecast_table(schema_manager):
 
 
 def test_create_renewables_tables(schema_manager):
-    """Test creation of renewables tables (solar, wind)."""
+    """Test creation of renewables tables (solar)."""
     expected_queries = [
         f"""CREATE TABLE {renewable} (
             time        TIMESTAMPTZ NOT NULL,
@@ -171,10 +171,10 @@ def test_create_renewables_tables(schema_manager):
         );
         SELECT create_hypertable('{renewable}', 'time');
         """
-        for renewable in ["solar", "wind"]
+        for renewable in ["solar"]
     ]
     schema_manager._create_renewables_tables()
-    assert schema_manager.db.execute.call_count == 2
+    assert schema_manager.db.execute.call_count == 1
     calls = [call[0][0] for call in schema_manager.db.execute.call_args_list]
     calls_clean = [
         "".join(call.split()) for call in calls
@@ -184,7 +184,7 @@ def test_create_renewables_tables(schema_manager):
 
 
 def test_create_renewables_forecast_tables(schema_manager):
-    """Test creation of renewables forecast tables (solar_forecast, wind_forecast)."""
+    """Test creation of renewables forecast tables (solar_forecast)."""
     expected_queries = [
         f"""
         CREATE TABLE {renewable}_forecast (
@@ -194,10 +194,10 @@ def test_create_renewables_forecast_tables(schema_manager):
         );
         SELECT create_hypertable('{renewable}_forecast', 'time');
         """
-        for renewable in ["solar", "wind"]
+        for renewable in ["solar"]
     ]
     schema_manager._create_renewables_forecast_tables()
-    assert schema_manager.db.execute.call_count == 2
+    assert schema_manager.db.execute.call_count == 1
     calls = [call[0][0] for call in schema_manager.db.execute.call_args_list]
     calls_clean = [
         "".join(call.split()) for call in calls

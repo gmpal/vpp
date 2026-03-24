@@ -4,12 +4,13 @@ from kafka.errors import (
     UnknownTopicOrPartitionError,
     TopicAlreadyExistsError,
     NoBrokersAvailable,
+    NodeNotReadyError,
 )
 import sys
 
 
 def create_admin_client(
-    bootstrap_servers="kafka:9092", max_retries=10, retry_interval=2
+    bootstrap_servers="kafka:29092", max_retries=10, retry_interval=2
 ):
     """
     Create a KafkaAdminClient with retry logic to handle initial connection failures.
@@ -22,7 +23,7 @@ def create_admin_client(
             )
             print("Successfully connected to Kafka.", flush=True)
             return admin_client
-        except NoBrokersAvailable as e:
+        except (NoBrokersAvailable, NodeNotReadyError) as e:
             print(
                 f"Failed to connect to Kafka (attempt {attempt + 1}/{max_retries}): {e}",
                 flush=True,
@@ -122,7 +123,7 @@ if __name__ == "__main__":
     admin_client = create_admin_client()
 
     # Define topics
-    topics = ["solar", "wind", "load", "market"]
+    topics = ["solar", "load", "market"]
 
     # Delete existing topics and wait
     if not delete_topics_if_exist(admin_client, topics):

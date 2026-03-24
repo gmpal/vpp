@@ -22,8 +22,6 @@ def test_schema_creation(db_manager, schema_manager, cleanup):
         "load_forecast",
         "solar",
         "solar_forecast",
-        "wind",
-        "wind_forecast",
     ]
     for table in tables:
         query = f"SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = '{table}');"

@@ -158,18 +158,6 @@ def test_kafka_consume_centralized(mocker):
                 ).encode("utf-8")
             ),
         ),
-        MagicMock(
-            topic="wind",
-            value=deserializer(
-                json.dumps(
-                    {
-                        "source_id": "wind_1",
-                        "timestamp": "2025-01-01T01:00:00",
-                        "data": 15.0,
-                    }
-                ).encode("utf-8")
-            ),
-        ),
     ]
     # Create a mock consumer instance
     mock_consumer_instance = MagicMock()
@@ -202,19 +190,17 @@ def test_kafka_consume_centralized(mocker):
     mock_crud_manager.assert_called_once_with(mock_db_manager.return_value)
 
     # 3. save_to_db was called for each message
-    assert mock_crud_instance.save_to_db.call_count == 2
+    assert mock_crud_instance.save_to_db.call_count == 1
     expected_calls = [
         mocker.call("solar", mock_to_datetime.return_value, "solar_1", 10.0),
-        mocker.call("wind", mock_to_datetime.return_value, "wind_1", 15.0),
     ]
     mock_crud_instance.save_to_db.assert_has_calls(expected_calls, any_order=False)
 
     # 4. pd.to_datetime was called with correct timestamps
-    assert mock_to_datetime.call_count == 2
+    assert mock_to_datetime.call_count == 1
     mock_to_datetime.assert_has_calls(
         [
             mocker.call("2025-01-01T00:00:00"),
-            mocker.call("2025-01-01T01:00:00"),
         ],
         any_order=False,
     )

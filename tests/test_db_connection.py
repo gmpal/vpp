@@ -27,7 +27,7 @@ def db_manager():
 def test_init():
     """Test DatabaseManager initialization with default renewables."""
     db = DatabaseManager()
-    assert db.renewables == ["solar", "wind"]
+    assert db.renewables == ["solar"]
     assert isinstance(db.config, dict)
 
 

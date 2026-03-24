@@ -3,12 +3,14 @@ import psycopg2
 from backend.src.db import DatabaseManager, CrudManager, SchemaManager
 
 
+import os
+
 DB_CONFIG = {
-    "dbname": "postgres",
-    "user": "postgres",
-    "password": "testpass",
-    "host": "localhost",
-    "port": "5432",
+    "dbname": os.environ.get("POSTGRES_DB", "postgres"),
+    "user": os.environ.get("POSTGRES_USER", "postgres"),
+    "password": os.environ.get("POSTGRES_PASSWORD", "testpass"),
+    "host": os.environ.get("TIMESCALEDB_HOST", "localhost"),
+    "port": os.environ.get("POSTGRES_PORT", "5432"),
 }
 
 
@@ -68,15 +70,15 @@ def cleanup(db_manager):
     yield  # Run the test
     tables = [
         "solar",
-        "wind",
         "load",
         "market",
-        "batteries",
         "solar_forecast",
-        "wind_forecast",
         "load_forecast",
         "market_forecast",
         "energy_sources",
+        "electric_vehicles",
+        "households",
+        "household_load",
     ]
     for table in tables:
         try:

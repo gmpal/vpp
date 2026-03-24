@@ -2,12 +2,15 @@ import mlflow
 import os
 import pickle
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
 import warnings
 from backend.src.forecasting.models import (
     RandomForestTimeSeriesModel,
 )
 from backend.src.db import DatabaseManager, CrudManager, SchemaManager
+from backend.src.utils.logger import get_logger
+from backend.src.utils.data_utils import get_datasets_list
 
 # Suppress the FutureIncompatibilityWarning from holidays
 warnings.filterwarnings(
@@ -15,30 +18,11 @@ warnings.filterwarnings(
     category=FutureWarning,
 )
 
+logger = get_logger(__name__)
+
 db_manager = DatabaseManager()
 crud_manager = CrudManager(db_manager)
 schema_manager = SchemaManager(db_manager)
-
-
-def get_datasets_list():
-    """
-    Returns a list of (dataset, source_id) tuples.
-    For renewable datasets, we retrieve all existing source_ids in the DB.
-    For non-renewable datasets (like load, market), source_id is None.
-    """
-    datasets_info = []
-
-    # 1) Loop over each renewable and its source_ids
-    for renewable in db_manager.renewables:
-        sids = crud_manager.query_source_ids(renewable)  # e.g., ['010780', 'XYZ', ...]
-        for sid in sids:
-            datasets_info.append((renewable, sid))
-
-    # 2) Add non-renewable datasets without source_id
-    for ds in ["load", "market"]:
-        datasets_info.append((ds, None))
-
-    return datasets_info
 
 
 def train_pipeline():
@@ -87,19 +71,24 @@ def train_pipeline():
 
     with mlflow.start_run(run_name="Timeseries_CV_Train"):
 
-        all_datasets = get_datasets_list()
+        all_datasets = get_datasets_list(db_manager, crud_manager)
 
         for dataset, source_id in all_datasets:
             # 1) Load the entire historical datasets
-            df = crud_manager.load_historical_data(dataset, source_id)
-            if df.empty:
-                print(
+            raw_data = crud_manager.load_historical_data(dataset, source_id)
+            if not raw_data:
+                logger.warning(
                     f"No data found for dataset={dataset}, source_id={source_id}, skipping..."
                 )
                 continue
 
-            print(
-                f"\n[DATASET: {dataset}, Source: {source_id}] loaded. Shape: {df.shape}, [{df.index.min()} - {df.index.max()}]"
+            # Convert the raw data to a DataFrame right after loading
+            df = pd.DataFrame(raw_data)
+            df["time"] = pd.to_datetime(df["time"])
+            df = df.set_index("time")
+            # -----------------------------
+            logger.info(
+                f"[DATASET: {dataset}, Source: {source_id}] loaded. Shape: {df.shape}, [{df.index.min()} - {df.index.max()}]"
             )
 
             # 2) TimeSeriesSplit CV for each model
@@ -124,12 +113,12 @@ def train_pipeline():
                     full_values = df.iloc[int(len(df) * 0.1) :].copy()
 
                     if hyperopt:
-                        print(f"Hyperparameter tuning for {model_name}...")
+                        logger.info(f"Hyperparameter tuning for {model_name}...")
                         best_params = model_obj.tune(hyperopt_data)
                         # Log best params
                         for k, v in best_params.items():
                             mlflow.log_param(f"{model_name}_{k}", v)
-                        print(f"Best params: {best_params}")
+                        logger.info(f"Best params: {best_params}")
 
                     for fold_idx, (train_idx, val_idx) in enumerate(
                         tscv.split(full_values)
@@ -148,7 +137,7 @@ def train_pipeline():
                     avg_mse = np.mean(fold_mses)
                     mlflow.log_metric(f"{dataset}_{model_name}_avg_cv_mse", avg_mse)
 
-                    print(f"   - {model_name} CV MSEs={fold_mses}, Avg={avg_mse:.4f}")
+                    logger.info(f"   - {model_name} CV MSEs={fold_mses}, Avg={avg_mse:.4f}")
 
                     # Track best model
                     if avg_mse < best_avg_mse:
@@ -158,8 +147,8 @@ def train_pipeline():
                             "instance"
                         ]  # Keep the config's model class
 
-                print(
-                    f"\n[DATASET: {dataset}] Best Model: {best_model_name} (Avg CV={best_avg_mse:.4f})"
+                logger.info(
+                    f"[DATASET: {dataset}] Best Model: {best_model_name} (Avg CV={best_avg_mse:.4f})"
                 )
 
                 # 3) Retrain best model on full data
@@ -184,7 +173,7 @@ def train_pipeline():
 
                 final_model_uri = f"runs:/{mlflow.active_run().info.run_id}/{dataset}_{best_model_name}_final"
                 result = mlflow.register_model(final_model_uri, registry_name)
-                print(f"Registered {registry_name} => version {result.version}")
+                logger.info(f"Registered {registry_name} => version {result.version}")
 
 
 if __name__ == "__main__":

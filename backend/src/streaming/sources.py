@@ -2,7 +2,6 @@ from multiprocessing import Process
 
 from backend.src.pipelines.generation import (
     generate_weather_data,
-    generate_wind_data,
     generate_pv_data,
     read_generation_config,
 )
@@ -16,19 +15,22 @@ import random
 import string
 
 
-def create_new_source(source_type: str, kakfa_flag=False):
+def create_new_source(source_type: str, kakfa_flag=False, latitude=None, longitude=None):
     """
     Creates a new data source for weather forecasting and starts a Kafka producer process.
     Args:
-        source_type (str): The type of the source to create, either "wind" or "pv".
+        source_type (str): The type of the source to create. Only "solar" is supported.
+        kakfa_flag (bool): Whether to start a Kafka producer.
+        latitude (float): Latitude of the source location.
+        longitude (float): Longitude of the source location.
     Returns:
         Process: The Kafka producer process that was started for the new source.
     Raises:
-        ValueError: If the source_type is not "wind" or "pv".
+        ValueError: If the source_type is not "solar".
     This function performs the following steps:
         1. Reads the generation configuration.
         2. Generates weather data for the new source.
-        3. Depending on the source_type, generates either wind or PV data.
+        3. Generates PV data for the source.
         4. Updates the producers_bundles to include the new source.
         5. Starts a new Kafka producer process for the new source.
     """
@@ -41,10 +43,10 @@ def create_new_source(source_type: str, kakfa_flag=False):
     freq = configs["freq"]
     sleeping_time = configs["sleeping_time"]
 
-    # random sequence of nums nad letters
+    # random sequence of nums and letters
     source_id = "".join(random.choices(string.digits, k=6))
 
-    print(f"Creating new source with ID: {source_id}")
+    print(f"Creating new source with ID: {source_id} at ({latitude}, {longitude})")
     # Generate weather data for the new source
     weather_data = generate_weather_data(
         starting_date,
@@ -52,20 +54,17 @@ def create_new_source(source_type: str, kakfa_flag=False):
         output_path=output_path,
         source_id=source_id,
         freq=freq,
+        latitude=latitude,
+        longitude=longitude,
     )
 
-    # Decide randomly whether to generate wind or PV data
-    if source_type == "wind":
-        generate_wind_data(
-            weather_data=weather_data,
-            output_path=output_path,
-            source_id=source_id,
-        )
-    elif source_type == "solar":
+    if source_type == "solar":
         generate_pv_data(
             weather_data=weather_data,
             output_path=output_path,
             source_id=source_id,
+            latitude=latitude,
+            longitude=longitude,
         )
 
     if kakfa_flag:

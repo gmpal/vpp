@@ -49,7 +49,6 @@ interface ForecastedDataPoint {
 }
 
 const CombinedDataViewer: React.FC<CombinedDataViewerProps> = ({ source, sourceId, start, end, top }) => {
-    console.log('CombinedDataViewer rendered with:', { source, sourceId, start, end, top });
     const [historicalData, setHistoricalData] = useState<HistoricalDataPoint[]>([]);
     const [forecastedData, setForecastedData] = useState<ForecastedDataPoint[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
@@ -63,8 +62,6 @@ const CombinedDataViewer: React.FC<CombinedDataViewerProps> = ({ source, sourceI
                     fetchHistoricalData(source, sourceId, start, end, top),
                     fetchForecastedData(source, sourceId, start, end),
                 ]);
-                console.log('Historical Data:', histData);
-                console.log('Forecasted Data:', foreData);
                 setHistoricalData(histData);
                 setForecastedData(foreData);
             } catch (err) {
@@ -117,25 +114,6 @@ const CombinedDataViewer: React.FC<CombinedDataViewerProps> = ({ source, sourceI
         borderDash: [5, 5], // Dashed line for forecasted data
         tension: 0.4,
     };
-
-    // DEBUG: Print the datasets
-    console.log('=== DATASET DEBUG ===');
-    console.log('Historical dataset:', {
-        label: historicalDataset.label,
-        dataCount: historicalDataset.data.length,
-        firstPoint: historicalDataset.data[0],
-        lastPoint: historicalDataset.data[historicalDataset.data.length - 1],
-        sampleData: historicalDataset.data.slice(0, 3)
-    });
-
-    console.log('Forecasted dataset:', {
-        label: forecastedDataset.label,
-        dataCount: forecastedDataset.data.length,
-        firstPoint: forecastedDataset.data[0],
-        lastPoint: forecastedDataset.data[forecastedDataset.data.length - 1],
-        sampleData: forecastedDataset.data.slice(0, 3)
-    });
-
 
     const data = {
         datasets: [historicalDataset, forecastedDataset],

@@ -1,0 +1,27 @@
+# Git and IDE files
+.git
+.vscode
+.idea
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+.venv
+
+# --- THIS IS THE MOST IMPORTANT ENTRY ---
+# Node specific - we want to install this inside the container
+node_modules
+
+# Docker specific - never include other Dockerfiles or contexts
+docker/
+
+# Application specific - not needed for the frontend build
+backend/
+entrypoints/
+requirements/
+data/
+
+# OS specific
+.DS_Store
+Thumbs.db

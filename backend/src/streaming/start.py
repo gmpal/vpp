@@ -42,7 +42,7 @@ def dump_csv_folder_to_db_and_start_streaming(folder_path: str):
 
         # 3. Decide table name and source_id usage
         #    - If 'source' is in RENEWABLES, we use that as the table name, else it might be "load" or "market"
-        table_name = source  # e.g. "solar", "wind", "load", "market"
+        table_name = source  # e.g. "solar", "load", "market"
 
         # For each row, we need (time, source_id, value) for renewables or (time, value) for non-renewables
         # but let's unify as (time, source_id, value) and set source_id=None if not renewables.
@@ -61,7 +61,7 @@ def dump_csv_folder_to_db_and_start_streaming(folder_path: str):
 
         # 4. Bulk insert with execute_values
         #    Build the correct SQL depending on whether table_name is renewable or not
-        #    But let's unify: the table always has columns (time, source_id, value) for solar/wind,
+        #    But let's unify: the table always has columns (time, source_id, value) for solar,
         #    while load/market have columns (time, value). We'll just pass source_id as NULL for load/market.
 
         if source in db_manager.renewables:

@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 
 type Source = {
   source_id: string;
-  type: 'solar' | 'wind';
+  type: 'solar';
   lat: number;
   lon: number;
 };

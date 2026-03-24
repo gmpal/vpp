@@ -1,0 +1,6 @@
+kafka-python==2.0.2
+psycopg2-binary==2.9.9
+numpy==1.24.3
+pandas==2.0.3
+pydantic==2.5.3
+pydantic-settings==2.1.0

@@ -44,35 +44,7 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
 
     df_solar_total.rename(columns={"yhat": "solar"}, inplace=True)
 
-    # 1b) Aggregate all wind
-    wind_ids = crud_manager.query_source_ids("wind")
-    df_wind_total = None
-    for w_id in wind_ids:
-        df_wind = crud_manager.load_forecasted_data(
-            "wind", source_id=w_id, start=start, end=end
-        )
-        if df_wind_total is None:
-            df_wind_total = df_wind.copy()
-            reference_index = df_wind_total.index
-        else:
-            # Sum the 'value' columns
-            # reindex
-            df_wind.index = reference_index
-            df_wind_total["yhat"] = df_wind_total["yhat"].add(
-                df_wind["yhat"], fill_value=0
-            )
-    if df_wind_total is None:
-        df_wind_total = pd.DataFrame(
-            columns=["wind"],
-            index=(
-                reference_index
-                if reference_index is not None
-                else pd.date_range(start or "2025-01-01", periods=1, freq="h")
-            ),
-        )
-    df_wind_total.rename(columns={"yhat": "wind"}, inplace=True)
-
-    # 1c) Load load and market price
+    # 1b) Load load and market price
     df_load = crud_manager.load_forecasted_data(
         "load", source_id=None, start=start, end=end
     )
@@ -84,18 +56,16 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
     df_market.rename(columns={"yhat": "price"}, inplace=True)
 
     df_solar_total = df_solar_total["solar"].to_frame()
-    df_wind_total = df_wind_total["wind"].to_frame()
     df_load = df_load["load"].to_frame()
     df_market = df_market["price"].to_frame()
 
     reference_index = df_solar_total.index
-    df_wind_total.index = reference_index
     df_load.index = reference_index
     df_market.index = reference_index
 
     # 1d) Combine everything into one DataFrame
     # We do an outer join on index (time), fill missing with 0
-    df = pd.concat([df_solar_total, df_wind_total, df_load, df_market], axis=1)
+    df = pd.concat([df_solar_total, df_load, df_market], axis=1)
     # Ensure we have an hourly frequency in time
     # (adjust if your data is already guaranteed to be hourly)
     # TODO: adjust when moving back to hourr
@@ -111,7 +81,7 @@ def optimize(
 ) -> pd.DataFrame:
     """
     Performs an optimization over the specified time range [start, end],
-    using the aggregated wind, solar, load, and market price from the database,
+    using the aggregated solar, load, and market price from the database,
     and multiple Battery objects.
 
     Parameters
@@ -135,7 +105,7 @@ def optimize(
     # 1. Load and prepare data from the database
     # --------------------------------------------------------------------------
     # Example using the provided helper functions load_historical_data and query_source_ids.
-    # We'll sum up all wind, sum up all solar from all source IDs, then merge with load & price.
+    # We'll sum up all solar from all source IDs, then merge with load & price.
 
     # 1a) Aggregate all solar
     df = load_optimization_data(start=start, end=end)
@@ -209,7 +179,7 @@ def optimize(
     # --------------------------------------------------------------------------
     # 4. Net excess and buy/sell constraints
     # --------------------------------------------------------------------------
-    # For each time step, net_excess = (solar + wind) - load + sum of battery flows
+    # For each time step, net_excess = solar - load + sum of battery flows
     # battery flows = sum( Charge - Discharge ) across all batteries
     for t in time_steps:
         # Sum across all batteries
@@ -226,7 +196,6 @@ def optimize(
 
         net_excess = (
             df["solar"].iloc[t]
-            + df["wind"].iloc[t]
             - df["load"].iloc[t]
             + total_battery_charge_t
             - total_battery_discharge_t

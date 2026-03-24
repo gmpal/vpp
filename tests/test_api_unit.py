@@ -207,7 +207,6 @@ def test_optimize(client, reset_batteries, mocker):
     mock_optimization_data = pd.DataFrame(
         {
             "solar": [100.0],
-            "wind": [50.0],
             "load": [120.0],
             "price": [0.1],
         },
