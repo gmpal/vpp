@@ -1,10 +1,13 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 
 from backend.api.auth import (
-    get_user_by_username, create_user_in_db,
-    verify_password, create_access_token, get_current_user,
+    create_access_token,
+    create_user_in_db,
+    get_current_user,
+    get_user_by_username,
+    verify_password,
 )
 from backend.src.db import DatabaseManager
 from backend.src.dependencies import get_db_manager
