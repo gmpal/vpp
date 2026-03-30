@@ -28,7 +28,7 @@ import {
   HouseholdData,
 } from "../api";
 import { solarIntensityFactor } from "../utils/solarPosition";
-import { distM } from "../utils/geoUtils";
+import { distM, geomCentroid } from "../utils/geoUtils";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 
@@ -57,8 +57,8 @@ const isRealBuildingFeature = (f: maplibregl.MapGeoJSONFeature): boolean => {
   return getFeatureHeight(f.properties as Record<string, any>) >= 2;
 };
 
-/** Distance threshold (metres) for matching a click to an enrolled household. */
-const ENROLLED_MATCH_RADIUS_M = 30;
+/** Distance threshold (metres) for matching a click to an enrolled household centroid (use building centroid for clicks). */
+const ENROLLED_MATCH_RADIUS_M = 15;
 
 const Map3D: React.FC = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -117,6 +117,27 @@ const Map3D: React.FC = () => {
       );
       buildingLayerIdsRef.current = extrusionLayers.map((l) => l.id);
 
+      // Add GeoJSON source for building highlights
+      m.addSource("building-highlight", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      // Add line layer to outline highlighted building
+      m.addLayer(
+        {
+          id: "building-highlight-line",
+          type: "line",
+          source: "building-highlight",
+          paint: {
+            "line-color": "#00FF00",
+            "line-width": 3,
+            "line-opacity": 0.8,
+          },
+        },
+        buildingLayerIdsRef.current[0] || "building", // Insert before first building layer
+      );
+
       // Cursor change on hover over buildings
       buildingLayerIdsRef.current.forEach((layerId) => {
         m.on("mouseenter", layerId, () => {
@@ -132,28 +153,50 @@ const Map3D: React.FC = () => {
       const clickLat = e.lngLat.lat;
       const clickLng = e.lngLat.lng;
 
-      // 1. Check if click is near an already-enrolled household → info dialog
-      const existingHH = householdsRef.current.find(
-        (hh) =>
-          hh.latitude != null &&
-          hh.longitude != null &&
-          distM(hh.latitude, hh.longitude, clickLat, clickLng) <
-            ENROLLED_MATCH_RADIUS_M,
-      );
-      if (existingHH) {
-        setInfoBuilding(existingHH);
-        setInfoDialog(true);
-        return;
-      }
-
-      // 2. Check if click hit a 3D building → enroll dialog
+      // Check if click hit a 3D building → enroll dialog or show existing household info
       const layerIds = buildingLayerIdsRef.current.filter((id) =>
         m.getLayer(id),
       );
       if (layerIds.length > 0) {
         const hits = m.queryRenderedFeatures(e.point, { layers: layerIds });
-        if (hits.some(isRealBuildingFeature)) {
-          setClickedLatLng({ lat: clickLat, lng: clickLng });
+        const realBuilding = hits.find(isRealBuildingFeature);
+        if (realBuilding && realBuilding.geometry) {
+          // Compute centroid of the clicked building polygon
+          const centroid = geomCentroid(realBuilding.geometry as GeoJSON.Geometry);
+          const matchLat = centroid ? centroid[1] : clickLat;
+          const matchLng = centroid ? centroid[0] : clickLng;
+
+          // Highlight the clicked building
+          const sourceData = m.getSource("building-highlight") as maplibregl.GeoJSONSource;
+          if (sourceData) {
+            sourceData.setData({
+              type: "FeatureCollection",
+              features: [
+                {
+                  type: "Feature",
+                  properties: {},
+                  geometry: realBuilding.geometry,
+                },
+              ],
+            });
+          }
+
+          // Check if building centroid is near an already-enrolled household
+          const existingHH = householdsRef.current.find(
+            (hh) =>
+              hh.latitude != null &&
+              hh.longitude != null &&
+              distM(hh.latitude, hh.longitude, matchLat, matchLng) <
+                ENROLLED_MATCH_RADIUS_M,
+          );
+          if (existingHH) {
+            setInfoBuilding(existingHH);
+            setInfoDialog(true);
+            return;
+          }
+
+          // No existing household at this location, open enroll dialog
+          setClickedLatLng({ lat: matchLat, lng: matchLng });
           setBuildingName("");
           setBuildingType("household");
           setSolarPanels(4);
@@ -163,7 +206,7 @@ const Map3D: React.FC = () => {
           return;
         }
       }
-      // 3. Empty land → nothing
+      // Empty land or non-building feature → nothing
     });
 
     mapRef.current = m;
@@ -265,9 +308,8 @@ const Map3D: React.FC = () => {
       const popup = new maplibregl.Popup({ offset: 20, maxWidth: "220px" })
         .setHTML(`
         <b>${name}</b><br/>
-        <small>Community rooftop &bull; ${panels} solar panel${
-          panels === 1 ? "" : "s"
-        }</small>
+        <small>Community rooftop &bull; ${panels} solar panel${panels === 1 ? "" : "s"
+          }</small>
       `);
       const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([lng, lat])
@@ -291,11 +333,10 @@ const Map3D: React.FC = () => {
           "#f0c040",
           `
         <b>${s.name || s.source_id}</b><br/>
-        <small>${
-          s.current_value != null
+        <small>${s.current_value != null
             ? s.current_value.toFixed(2) + " kW"
             : "No data"
-        }</small><br/>
+          }</small><br/>
         <button onclick="window.__deleteSource('${s.source_id}')"
           style="margin-top:4px;color:red;border:1px solid red;background:none;cursor:pointer;padding:2px 8px;border-radius:4px;font-size:11px">
           Remove
@@ -332,9 +373,8 @@ const Map3D: React.FC = () => {
           border,
           `
         <b>${ev.name}</b> (${ev.status})<br/>
-        <small>SOC: ${ev.soc_kwh.toFixed(1)}/${
-          ev.capacity_kwh
-        } kWh (${soc}%)</small>`,
+        <small>SOC: ${ev.soc_kwh.toFixed(1)}/${ev.capacity_kwh
+          } kWh (${soc}%)</small>`,
         );
       });
   }, [sources, households, vehicles]);
@@ -382,6 +422,17 @@ const Map3D: React.FC = () => {
       console.error("Failed to remove building", e);
     }
   };
+
+  // Clear building highlight when dialogs close
+  useEffect(() => {
+    if ((!buildingDialog && !infoDialog) || !mapRef.current) return;
+    if (!buildingDialog && !infoDialog) {
+      const sourceData = mapRef.current.getSource("building-highlight") as maplibregl.GeoJSONSource;
+      if (sourceData) {
+        sourceData.setData({ type: "FeatureCollection", features: [] });
+      }
+    }
+  }, [buildingDialog, infoDialog]);
 
   return (
     <Box sx={{ width: "100%", height: "100%", position: "relative" }}>
