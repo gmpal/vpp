@@ -7,6 +7,7 @@
 
 ## High Priority — Tooling & Libraries
 
+- [ ] **Dependency vulnerability remediation** — Current state: 9 known Python CVEs (fastapi, starlette, python-jose, python-multipart) + 51 npm vulnerabilities (24 high, 1 critical). Audit jobs set to `continue-on-error: true` in CI. Action: Upgrade fastapi/starlette, evaluate python-jose alternatives, pin safe package versions, then remove soft-fail flags in `.github/workflows/security.yaml`.
 - [ ] **Database migrations (Alembic)** — Replace custom `SchemaManager` migration methods with versioned, reversible Alembic migrations. Current approach (`_migrate_add_user_id()` etc.) has no rollback path.
 - [x] **Structured logging** — `logger.py` now emits JSON in production (`ENVIRONMENT=production`) via `python-json-logger`, coloured text in development. Zero call-site changes needed.
 - [x] **Python linting (Ruff)** — Replaced Flake8 with `ruff` via `pyproject.toml` + CI lint job in `tests.yaml`. Deleted `.flake8`.
