@@ -1,17 +1,16 @@
+import sys
 import time
+
 from kafka.admin import KafkaAdminClient, NewTopic
 from kafka.errors import (
-    UnknownTopicOrPartitionError,
-    TopicAlreadyExistsError,
     NoBrokersAvailable,
     NodeNotReadyError,
+    TopicAlreadyExistsError,
+    UnknownTopicOrPartitionError,
 )
-import sys
 
 
-def create_admin_client(
-    bootstrap_servers="kafka:29092", max_retries=10, retry_interval=2
-):
+def create_admin_client(bootstrap_servers="kafka:29092", max_retries=10, retry_interval=2):
     """
     Create a KafkaAdminClient with retry logic to handle initial connection failures.
     """
@@ -29,16 +28,12 @@ def create_admin_client(
                 flush=True,
             )
             if attempt == max_retries - 1:
-                print(
-                    "Could not connect to Kafka after max retries. Exiting.", flush=True
-                )
+                print("Could not connect to Kafka after max retries. Exiting.", flush=True)
                 sys.exit(1)
             time.sleep(retry_interval)
 
 
-def delete_topics_if_exist(
-    admin_client, topics_to_check, wait_interval=3, max_wait=300
-):
+def delete_topics_if_exist(admin_client, topics_to_check, wait_interval=3, max_wait=300):
     """
     Delete specified Kafka topics if they exist and wait for deletion to complete.
     Returns True if all topics are deleted or don't exist, False if timeout occurs.
@@ -80,24 +75,17 @@ def create_topics(admin_client, topics_to_create, max_retries=5, retry_interval=
     """
     Create Kafka topics with retry logic to handle TopicAlreadyExistsError.
     """
-    new_topics = [
-        NewTopic(name=topic, num_partitions=1, replication_factor=1)
-        for topic in topics_to_create
-    ]
+    new_topics = [NewTopic(name=topic, num_partitions=1, replication_factor=1) for topic in topics_to_create]
 
     for attempt in range(max_retries):
         try:
             existing_topics = admin_client.list_topics()
-            topics_to_create_filtered = [
-                topic for topic in new_topics if topic.name not in existing_topics
-            ]
+            topics_to_create_filtered = [topic for topic in new_topics if topic.name not in existing_topics]
             if not topics_to_create_filtered:
                 print("All topics already exist.", flush=True)
                 return
 
-            admin_client.create_topics(
-                new_topics=topics_to_create_filtered, validate_only=False
-            )
+            admin_client.create_topics(new_topics=topics_to_create_filtered, validate_only=False)
             print(
                 f"Topics created successfully: {[topic.name for topic in topics_to_create_filtered]}",
                 flush=True,

@@ -1,14 +1,14 @@
+from typing import Any, Dict
+
+import numpy as np
 import optuna
 import pandas as pd
-import numpy as np
-
-from sklearn.neural_network import MLPRegressor
 from sklearn.metrics import mean_squared_error
+from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import StandardScaler
-from typing import Dict, Any
 
-from backend.src.forecasting.models.base import BaseTimeSeriesModel
 from backend.src.forecasting.feature_engineering import create_regression_features
+from backend.src.forecasting.models.base import BaseTimeSeriesModel
 
 
 class MLPTimeSeriesModel(BaseTimeSeriesModel):
@@ -43,9 +43,7 @@ class MLPTimeSeriesModel(BaseTimeSeriesModel):
         The Optuna objective function.
         We'll define which hyperparams we want to search over.
         """
-        hidden_layer_sizes_str = trial.suggest_categorical(
-            "hidden_layer_sizes", ["(32,)", "(64,)", "(128,64)"]
-        )
+        hidden_layer_sizes_str = trial.suggest_categorical("hidden_layer_sizes", ["(32,)", "(64,)", "(128,64)"])
         # Convert from string -> actual tuple
         if hidden_layer_sizes_str == "(32,)":
             hidden_layer_sizes = (32,)
@@ -56,9 +54,7 @@ class MLPTimeSeriesModel(BaseTimeSeriesModel):
 
         activation = trial.suggest_categorical("activation", ["relu", "tanh"])
         alpha = trial.suggest_float("alpha", 1e-5, 1e-1, log=True)
-        learning_rate_init = trial.suggest_float(
-            "learning_rate_init", 1e-5, 1e-2, log=True
-        )
+        learning_rate_init = trial.suggest_float("learning_rate_init", 1e-5, 1e-2, log=True)
 
         # Scale inside objective so each trial is consistent
         scaler = StandardScaler()

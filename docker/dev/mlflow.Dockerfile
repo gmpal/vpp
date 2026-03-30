@@ -11,6 +11,4 @@ WORKDIR /app
 CMD ["mlflow", "server", \
     "--host", "0.0.0.0", \
     "--port", "5000", \
-    "--gunicorn-opts", "--log-level debug"]
-
-
+    "--allowed-hosts", "mlflow,mlflow:5000,localhost,localhost:5000,0.0.0.0,0.0.0.0:5000"]

@@ -1,14 +1,41 @@
-name: Run Pytest Suite
+name: Backend CI
 
 on:
   push:
     branches:
-      - main # Adjust to your default branch
+      - main
   pull_request:
     branches:
       - main
 
 jobs:
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/ruff-action@v1
+        with:
+          args: "check ."
+
+  docker-build:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dev images
+        run: docker compose build backend consumer
+
+      - name: Build prod images
+        run: docker compose -f docker-compose.prod.yaml build backend consumer
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpass
+          DOMAIN: localhost
+
   test:
     runs-on: ubuntu-latest
 
@@ -31,10 +58,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.10" # Replace with your Python version
 

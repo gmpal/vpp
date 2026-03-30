@@ -1,6 +1,7 @@
 # Virtual Power Plant (VPP) Simulation
 
-[![Run Pytest Suite](https://github.com/gmpal/vpp/workflows/Run%20Pytest%20Suite/badge.svg)](https://github.com/gmpal/vpp/actions)
+[![Backend CI](https://github.com/gmpal/vpp/workflows/Backend%20CI/badge.svg)](https://github.com/gmpal/vpp/actions)
+[![Frontend CI](https://github.com/gmpal/vpp/workflows/Frontend%20CI/badge.svg)](https://github.com/gmpal/vpp/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A modular, containerized microservices system for simulating a Virtual Power Plant. The project integrates synthetic data generation, real-time data streaming with Kafka, automated machine learning forecasting with MLflow, and linear optimization with PuLP to emulate energy management decisions for distributed energy resources.
@@ -38,18 +39,54 @@ The system is fully containerized using Docker, enabling scalable deployments an
 
 ## System Architecture
 
-The VPP simulation is composed of several Dockerized microservices that communicate via REST APIs and Kafka messaging:
+```mermaid
+flowchart TD
+    subgraph init ["Init (run once)"]
+        DBI[db-init\nsynth data generator]
+    end
 
--   **`frontend`**: A React application providing the user interface for monitoring, managing resources, and visualizing data.
--   **`backend`**: A FastAPI application that serves the REST API, handles requests from the frontend, and interacts with the database and MLflow.
--   **`db-init`**: An initialization service that sets up the database schema, loads an initial batch of historical data, and starts the Kafka producers to stream the remaining synthetic data.
--   **`consumer`**: A centralized Kafka consumer that listens to all data topics (`solar`, `wind`, `load`, `market`) and writes the incoming data to TimescaleDB.
--   **`training-pipeline`**: A scheduled task that runs periodically to train forecasting models on the latest data from TimescaleDB and register the best models in MLflow.
--   **`inference-pipeline`**: A scheduled task that fetches the latest models from MLflow to generate and save new forecasts to the database.
--   **Infrastructure**:
-    -   **`timescaledb`**: The core time-series database for storing all data.
-    -   **`kafka` & `zookeeper`**: The messaging backbone for real-time data streaming.
-    -   **`mlflow`**: The MLOps platform for experiment tracking, model storage, and model registry.
+    subgraph streaming ["Streaming"]
+        DBI -->|solar / wind / load / market| K[Kafka]
+        K --> CON[consumer]
+    end
+
+    subgraph storage ["Storage"]
+        CON -->|raw time-series| DB[(TimescaleDB)]
+    end
+
+    subgraph ml ["ML Pipelines (on-demand)"]
+        DB -->|historical data| TR[training\nCV + model selection]
+        TR -->|register best model| MLF[MLflow Registry]
+        MLF -->|load model| INF[inference\n30-step forecast]
+        INF -->|forecasts| DB
+    end
+
+    subgraph app ["Application"]
+        DB -->|historical + forecasts| BE[backend\nFastAPI]
+        MLF --> BE
+        BE <-->|REST API| FE[frontend\nReact]
+    end
+
+    style init fill:#fef9c3
+    style streaming fill:#dbeafe
+    style storage fill:#dcfce7
+    style ml fill:#fce7f3
+    style app fill:#ede9fe
+```
+
+### Service Summary
+
+| Service | Role | Profile |
+|---------|------|---------|
+| `db-init` | Schema setup + synthetic data → Kafka | `init` (run once) |
+| `consumer` | Kafka → TimescaleDB writer | always-on |
+| `backend` | FastAPI REST API | always-on |
+| `frontend` | React UI | always-on |
+| `training` | Time-series CV, MLflow model registration | `task` (on-demand) |
+| `inference` | Load MLflow model, write forecasts to DB | `task` (on-demand) |
+| `timescaledb` | Time-series database (PostgreSQL) | always-on |
+| `kafka` + `zookeeper` | Message broker | always-on |
+| `mlflow` | Experiment tracking + model registry | always-on |
 
 ## Technology Stack
 
@@ -73,44 +110,44 @@ The VPP simulation is composed of several Dockerized microservices that communic
 
 ## Installation and Setup
 
-The entire system can be set up and run locally using Docker Compose.
+The entire system is containerized. You must use `docker-compose` to run it.
 
-1.  **Start Core Infrastructure:**
-    Launch the database, Kafka, and MLflow services in detached mode.
+1.  **Configure Environment:**
+    Create a file named `.env` in the root directory and add the configuration (see provided `.env` example above).
+
+2.  **Start Core Infrastructure:**
+    Launch the database, Kafka, and MLflow.
     ```bash
     docker-compose up -d timescaledb zookeeper kafka mlflow
     ```
 
-2.  **Start the Data Consumer:**
-    Start the consumer service so it's ready to receive messages from the producers.
+3.  **Start the Data Consumer:**
+    This service listens to Kafka and saves data to the database.
     ```bash
     docker-compose up -d consumer
     ```
-    *Wait a few moments for the infrastructure and consumer to initialize.*
 
-3.  **Initialize Database and Start Streaming:**
-    This command runs the `db-init` service, which populates the database with initial data and starts streaming the rest via Kafka producers. The `--profile init` flag activates the service defined in the `init` profile.
+4.  **Initialize Database & Start Streaming:**
+    **Important:** This runs once to set up database tables and start generating synthetic data.
     ```bash
     docker-compose --profile init up db-init
     ```
-    *(Run this command without `-d` to see the logs and confirm that data is being produced).*
 
-4.  **Start Application Services:**
+5.  **Start Application Services:**
     Launch the backend API and the frontend UI.
     ```bash
     docker-compose up -d backend frontend
     ```
 
-5.  **Run Scheduled Tasks (Manually):**
-    The training and inference pipelines are defined under the `task` profile and can be run on-demand for development or testing.
+6.  **Run ML Pipelines (On Demand):**
+    These services are not always running; they are tasks you trigger.
     ```bash
-    # Run the training pipeline
-    docker-compose --profile task up --no-deps training
+    # Run training
+    docker-compose --profile task up training
 
-    # Run the inference pipeline
-    docker-compose --profile task up --no-deps inference
+    # Run inference
+    docker-compose --profile task up inference
     ```
-
 Once all services are running, you can access the different components:
 -   **Frontend UI**: `http://localhost:3000`
 -   **Backend API Docs**: `http://localhost:8000/docs`
@@ -155,4 +192,4 @@ For a full list of endpoints and their parameters, see the auto-generated Swagge
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a pull request or open an issue for any bugs or feature requests.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, coding standards, and the PR process.

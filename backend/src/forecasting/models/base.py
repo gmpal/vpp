@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-import pandas as pd
 from typing import Any, Dict
+
 import numpy as np
+import pandas as pd
 
 
 class BaseTimeSeriesModel(ABC):
@@ -39,9 +40,7 @@ class BaseTimeSeriesModel(ABC):
         Optional method for models that require hyperparameter optimization.
         If not implemented, the tuning will be skipped or handled differently.
         """
-        raise NotImplementedError(
-            "Objective method should be implemented by the model."
-        )
+        raise NotImplementedError("Objective method should be implemented by the model.")
 
     @abstractmethod
     def predict(self, df: pd.DataFrame, steps: int = 1, **kwargs) -> np.ndarray:

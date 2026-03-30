@@ -2,9 +2,11 @@
 Centralized configuration management using Pydantic Settings.
 All environment variables are validated and type-checked here.
 """
-from pydantic_settings import BaseSettings
-from pydantic import Field, validator
+
 from typing import List
+
+from pydantic import Field, validator
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -61,22 +63,22 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
-        extra = 'ignore'
+        extra = "ignore"
         # Map environment variable names to field names
         fields = {
-            'timescaledb_host': {'env': 'TIMESCALEDB_HOST'},
-            'postgres_port': {'env': 'POSTGRES_PORT'},
-            'postgres_db': {'env': 'POSTGRES_DB'},
-            'postgres_user': {'env': 'POSTGRES_USER'},
-            'postgres_password': {'env': 'POSTGRES_PASSWORD'},
-            'kafka_bootstrap_servers': {'env': 'KAFKA_BOOTSTRAP_SERVERS'},
-            'mlflow_tracking_uri': {'env': 'MLFLOW_TRACKING_URI'},
-            'mlflow_backend_store_uri': {'env': 'MLFLOW_BACKEND_STORE_URI'},
-            'mlflow_default_artifact_root': {'env': 'MLFLOW_DEFAULT_ARTIFACT_ROOT'},
-            'backend_port': {'env': 'BACKEND_PORT'},
-            'frontend_port': {'env': 'FRONTEND_PORT'},
-            'log_level': {'env': 'LOG_LEVEL'},
-            'environment': {'env': 'ENVIRONMENT'},
+            "timescaledb_host": {"env": "TIMESCALEDB_HOST"},
+            "postgres_port": {"env": "POSTGRES_PORT"},
+            "postgres_db": {"env": "POSTGRES_DB"},
+            "postgres_user": {"env": "POSTGRES_USER"},
+            "postgres_password": {"env": "POSTGRES_PASSWORD"},
+            "kafka_bootstrap_servers": {"env": "KAFKA_BOOTSTRAP_SERVERS"},
+            "mlflow_tracking_uri": {"env": "MLFLOW_TRACKING_URI"},
+            "mlflow_backend_store_uri": {"env": "MLFLOW_BACKEND_STORE_URI"},
+            "mlflow_default_artifact_root": {"env": "MLFLOW_DEFAULT_ARTIFACT_ROOT"},
+            "backend_port": {"env": "BACKEND_PORT"},
+            "frontend_port": {"env": "FRONTEND_PORT"},
+            "log_level": {"env": "LOG_LEVEL"},
+            "environment": {"env": "ENVIRONMENT"},
         }
 
     @property

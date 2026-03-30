@@ -1,6 +1,6 @@
 #!/bin/bash
+set -e
 export PYTHONPATH=/app:$PYTHONPATH
-#!/bin/bash
 echo "Waiting for TimescaleDB to be ready..."
 until nc -z timescaledb 5432; do
     echo "Waiting for TimescaleDB..."

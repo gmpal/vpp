@@ -15,9 +15,7 @@ def create_future_features(df: pd.DataFrame) -> pd.DataFrame:
     df_future = df.copy()
     # Example: Add a 'holiday' binary feature
     holidays = ["2025-01-01", "2025-12-25"]  # List of holiday dates
-    df_future["holiday"] = (
-        df_future.index.normalize().isin(pd.to_datetime(holidays)).astype(int)
-    )
+    df_future["holiday"] = df_future.index.normalize().isin(pd.to_datetime(holidays)).astype(int)
     # Add more future covariate features as needed
     return df_future
 

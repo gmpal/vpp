@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 export PYTHONPATH=/app:$PYTHONPATH
 # In consumer.sh
 until nc -z kafka 9092; do

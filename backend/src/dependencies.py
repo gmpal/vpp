@@ -2,10 +2,9 @@
 Dependency injection providers for FastAPI.
 Use these to inject database managers and other dependencies into route handlers.
 """
-from typing import Generator
-from backend.src.db import DatabaseManager, CrudManager, SchemaManager
-from backend.src.config import get_settings
 
+from backend.src.config import get_settings
+from backend.src.db import CrudManager, DatabaseManager, SchemaManager
 
 # Singleton instances (to be replaced with proper DI pattern)
 _db_manager: DatabaseManager = None
@@ -24,7 +23,7 @@ def get_db_manager() -> DatabaseManager:
     """
     global _db_manager
     if _db_manager is None:
-        settings = get_settings()
+        get_settings()
         _db_manager = DatabaseManager()
     return _db_manager
 

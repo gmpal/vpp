@@ -10,7 +10,7 @@ WORKDIR /app
 COPY requirements/requirements-consumer.txt .
 # Install only the necessary system dependencies for psycopg2
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends libpq-dev && \
+    apt-get install -y --no-install-recommends libpq-dev netcat-openbsd && \
     # Now, install the minimal python dependencies
     pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements-consumer.txt && \

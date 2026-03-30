@@ -1,1 +1,1 @@
-from .optimization import optimize
+from .optimization import optimize  # noqa: F401

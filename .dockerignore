@@ -1,6 +1,3 @@
-# Exclude node_modules folder
-node_modules
-
 # Exclude editor-specific files
 .vscode/
 .idea/
@@ -14,7 +11,32 @@ node_modules
 # Ignore logs
 airflow-data/logs/
 
-backend/__pycache__/
-backend/.vscode/
-backend/mlruns/
-backend/node_modules
+./backend/__pycache__/
+./backend/.vscode/
+./backend/mlruns/
+./backend/node_modules/
+
+# Git and IDE files
+.git
+.vscode
+.idea
+
+# Python specific
+__pycache__/
+*.pyc
+*.pyo
+.venv
+
+# Node specific - we want to install this inside the container
+node_modules
+node_modules/
+**/node_modules/
+frontend/build/
+
+# Docker specific - never include other Dockerfiles or contexts
+# docker/prod/ excluded to avoid confusion, but dev is needed
+docker/prod/
+
+# OS specific
+.DS_Store
+Thumbs.db

@@ -1,12 +1,14 @@
-import mlflow
-from mlflow.tracking import MlflowClient
-from backend.src.db import DatabaseManager, CrudManager, SchemaManager
-from backend.src.utils.logger import get_logger
-from backend.src.utils.data_utils import get_datasets_list
 import os
 import pickle
-import pandas as pd
 import warnings
+
+import mlflow
+import pandas as pd
+from mlflow.tracking import MlflowClient
+
+from backend.src.db import CrudManager, DatabaseManager, SchemaManager
+from backend.src.utils.data_utils import get_datasets_list
+from backend.src.utils.logger import get_logger
 
 warnings.filterwarnings(
     "ignore",
@@ -38,13 +40,9 @@ def _load_model_from_registry(dataset, source_id):
         model: The loaded model object if successful, or None if the model could not be loaded.
     """
 
-    registry_name = (
-        f"Best_{dataset}_{source_id}_Model" if source_id else f"Best_{dataset}_Model"
-    )
+    registry_name = f"Best_{dataset}_{source_id}_Model" if source_id else f"Best_{dataset}_Model"
 
-    latest_version_info = client.get_latest_versions(registry_name, stages=["None"])[
-        0
-    ].version
+    latest_version_info = client.get_latest_versions(registry_name, stages=["None"])[0].version
 
     model_uri = f"models:/{registry_name}/{latest_version_info}"
 
@@ -156,9 +154,7 @@ def inference_pipeline(
             continue
         logger.info(f"  Forecast completed for {dataset} ({source_id})")
         # 4) Build a DataFrame for the forecast
-        df_forecast = pd.DataFrame(
-            {"time": forecast_series.index, "value": forecast_series.values}
-        ).set_index("time")
+        df_forecast = pd.DataFrame({"time": forecast_series.index, "value": forecast_series.values}).set_index("time")
         logger.info(f"  Forecast DataFrame created for {dataset} ({source_id})")
         # 5) (Optional) Save forecast results to DB
         crud_manager.save_forecast(dataset, source_id, df_forecast)

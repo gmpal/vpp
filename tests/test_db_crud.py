@@ -73,7 +73,7 @@ def test_save_battery_state(mock_timestamp, crud_manager, mock_battery):
 
     delete_query = "DELETE FROM batteries WHERE battery_id = %s"
     insert_query = """
-        INSERT INTO batteries 
+        INSERT INTO batteries
         (time, battery_id, capacity_kWh, soc_kWh, max_charge_kW, max_discharge_kW, eta)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
         """

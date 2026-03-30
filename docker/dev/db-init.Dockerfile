@@ -15,4 +15,3 @@ COPY ./entrypoints/db-init.sh ./db-init.sh
 
 RUN chmod +x ./db-init.sh
 ENTRYPOINT ["./db-init.sh"]
-

@@ -1,12 +1,13 @@
-import time
+import configparser
 import json
 import os
-import configparser
-import pandas as pd
-
+import time
 from datetime import datetime
+
+import pandas as pd
 from kafka import KafkaConsumer, KafkaProducer
-from backend.src.db import DatabaseManager, CrudManager
+
+from backend.src.db import CrudManager, DatabaseManager
 
 
 def _get_server_info():
@@ -24,10 +25,7 @@ def _get_server_info():
     # Read the config.ini file
     config.read(".streaming-config.ini")
 
-    bs = (
-        os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
-        or config["Kafka"]["bootstrap_servers"]
-    )
+    bs = os.environ.get("KAFKA_BOOTSTRAP_SERVERS") or config["Kafka"]["bootstrap_servers"]
     print("Using bootstrap servers:", bs, flush=True)
     return bs
 
@@ -64,11 +62,7 @@ def make_producers_info(root: str = "../data/"):
             - data (pd.DataFrame): The data read from the corresponding CSV file.
     """
 
-    renewable_sources = [
-        file
-        for file in os.listdir(root)
-        if file.split("_")[0].isnumeric() and "weather" not in file
-    ]
+    renewable_sources = [file for file in os.listdir(root) if file.split("_")[0].isnumeric() and "weather" not in file]
 
     producers_info = [
         (
@@ -124,9 +118,7 @@ def kafka_produce(producer_info: tuple, sleeping_time: int = 60):
     for _, row in df.iterrows():
         message = {"source_id": source_id, "timestamp": row.name, "data": row.values[0]}
         producer.send(topic, value=message, partition=0)
-        print(
-            f"Message from {source_id} at {row.name} sent to topic {topic} with value {row.values[0]}"
-        )
+        print(f"Message from {source_id} at {row.name} sent to topic {topic} with value {row.values[0]}")
         time.sleep(sleeping_time)
 
 

@@ -1,17 +1,17 @@
-import pandas as pd
-from sklearn.metrics import mean_squared_error
-
-from backend.src.forecasting.models.base import BaseTimeSeriesModel
-from backend.src.forecasting.feature_engineering import (
-    create_time_features,
-    create_future_features,
-)
+from typing import Any, Dict, Tuple
 
 import optuna
-from typing import Dict, Any, Tuple
-from darts.models import TFTModel
+import pandas as pd
 from darts import TimeSeries
 from darts.dataprocessing.transformers import Scaler
+from darts.models import TFTModel
+from sklearn.metrics import mean_squared_error
+
+from backend.src.forecasting.feature_engineering import (
+    create_future_features,
+    create_time_features,
+)
+from backend.src.forecasting.models.base import BaseTimeSeriesModel
 
 
 class TFTTimeSeriesModel(BaseTimeSeriesModel):
@@ -63,16 +63,12 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         # Create past covariates
         df_past_covariates = create_time_features(df)
         past_cov_cols = ["hour_sin", "hour_cos", "dow_sin", "dow_cos"]
-        past_covariates = TimeSeries.from_dataframe(
-            df_past_covariates[past_cov_cols], freq=None
-        )
+        past_covariates = TimeSeries.from_dataframe(df_past_covariates[past_cov_cols], freq=None)
 
         # Create future covariates
         df_future_cov = create_future_features(df)  # You need to define this function
         future_cov_cols = ["holiday"]  # Example columns
-        future_covariates = TimeSeries.from_dataframe(
-            df_future_cov[future_cov_cols], freq=None
-        )
+        future_covariates = TimeSeries.from_dataframe(df_future_cov[future_cov_cols], freq=None)
 
         return ts, past_covariates, future_covariates
 
@@ -135,9 +131,7 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
             )
 
             # Calculate MSE
-            mse = mean_squared_error(
-                ts_train.slice_intersect(backtest).values(), backtest.values()
-            )
+            mse = mean_squared_error(ts_train.slice_intersect(backtest).values(), backtest.values())
 
             return mse
 
@@ -156,9 +150,7 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         Returns:
             Dict[str, Any]: The best hyperparameters found.
         """
-        ts_train, past_covariates_train, future_covariates_train = (
-            self._create_features(df)
-        )
+        ts_train, past_covariates_train, future_covariates_train = self._create_features(df)
 
         # Scale target and covariates
         self.target_scaler = Scaler()
@@ -166,12 +158,8 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         self.future_covariate_scaler = Scaler()
 
         ts_train_scaled = self.target_scaler.fit_transform(ts_train)
-        past_covariates_train_scaled = self.past_covariate_scaler.fit_transform(
-            past_covariates_train
-        )
-        future_covariates_train_scaled = self.future_covariate_scaler.fit_transform(
-            future_covariates_train
-        )
+        past_covariates_train_scaled = self.past_covariate_scaler.fit_transform(past_covariates_train)
+        future_covariates_train_scaled = self.future_covariate_scaler.fit_transform(future_covariates_train)
 
         # Create Optuna study
         study = optuna.create_study(direction="minimize")
@@ -197,9 +185,7 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
             index and 'value' column.
             **kwargs: Additional keyword arguments.
         """
-        ts_train, past_covariates_train, future_covariates_train = (
-            self._create_features(df)
-        )
+        ts_train, past_covariates_train, future_covariates_train = self._create_features(df)
 
         # Scale target and covariates
         self.target_scaler = Scaler()
@@ -207,12 +193,8 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         self.future_covariate_scaler = Scaler()
 
         ts_train_scaled = self.target_scaler.fit_transform(ts_train)
-        past_covariates_train_scaled = self.past_covariate_scaler.fit_transform(
-            past_covariates_train
-        )
-        future_covariates_train_scaled = self.future_covariate_scaler.fit_transform(
-            future_covariates_train
-        )
+        past_covariates_train_scaled = self.past_covariate_scaler.fit_transform(past_covariates_train)
+        future_covariates_train_scaled = self.future_covariate_scaler.fit_transform(future_covariates_train)
 
         # Use best_params if available, else use defaults
         if self.use_hyperopt and self.best_params:
@@ -264,18 +246,12 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
         if self.model is None:
             raise ValueError("Model has not been trained. Call train() first.")
 
-        ts_test, past_covariates_test, future_covariates_test = self._create_features(
-            df
-        )
+        ts_test, past_covariates_test, future_covariates_test = self._create_features(df)
 
         # Scale test data using the same scalers
         ts_test_scaled = self.target_scaler.transform(ts_test)
-        past_covariates_test_scaled = self.past_covariate_scaler.transform(
-            past_covariates_test
-        )
-        future_covariates_test_scaled = self.future_covariate_scaler.transform(
-            future_covariates_test
-        )
+        past_covariates_test_scaled = self.past_covariate_scaler.transform(past_covariates_test)
+        future_covariates_test_scaled = self.future_covariate_scaler.transform(future_covariates_test)
 
         try:
             # Predict
@@ -322,16 +298,12 @@ class TFTTimeSeriesModel(BaseTimeSeriesModel):
             ts_scaled = ts
 
         if self.past_covariate_scaler is not None and past_covariates is not None:
-            past_covariates_scaled = self.past_covariate_scaler.transform(
-                past_covariates
-            )
+            past_covariates_scaled = self.past_covariate_scaler.transform(past_covariates)
         else:
             past_covariates_scaled = None
 
         if self.future_covariate_scaler is not None and future_covariates is not None:
-            future_covariates_scaled = self.future_covariate_scaler.transform(
-                future_covariates
-            )
+            future_covariates_scaled = self.future_covariate_scaler.transform(future_covariates)
         else:
             future_covariates_scaled = None
 

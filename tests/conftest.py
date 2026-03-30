@@ -25,7 +25,7 @@ def db_connection():
     with conn.cursor() as cursor:
         cursor.execute(
             """
-            DO $$ 
+            DO $$
             DECLARE tbl record;
             BEGIN
                 FOR tbl IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP

@@ -1,5 +1,6 @@
+from typing import Optional
+
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
 
 
 class DataPoint(BaseModel):
@@ -36,10 +37,11 @@ class Household(BaseModel):
     latitude: float
     longitude: float
     solar_panels: int = 0
-    building_type: str = 'household'
+    building_type: str = "household"
     num_people: int = 1
     num_evs: int = 0
     osm_feature_id: Optional[str] = None
+    geometry: Optional[dict] = None
 
 
 class HouseholdCreate(BaseModel):
@@ -47,10 +49,11 @@ class HouseholdCreate(BaseModel):
     latitude: float
     longitude: float
     solar_panels: int = 0
-    building_type: str = 'household'
+    building_type: str = "household"
     num_people: int = 1
     num_evs: int = 0
     osm_feature_id: Optional[str] = None
+    geometry: Optional[dict] = None
 
 
 class ElectricVehicle(BaseModel):
@@ -62,7 +65,7 @@ class ElectricVehicle(BaseModel):
     max_charge_kw: float
     max_discharge_kw: float
     eta: float
-    status: str = 'home'
+    status: str = "home"
     latitude: Optional[float] = None
     longitude: Optional[float] = None
 
@@ -75,7 +78,7 @@ class EVCreate(BaseModel):
     max_charge_kw: float
     max_discharge_kw: float
     eta: float = 0.9
-    status: str = 'home'
+    status: str = "home"
 
 
 class EVOperation(BaseModel):

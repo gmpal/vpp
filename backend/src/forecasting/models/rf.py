@@ -1,14 +1,13 @@
 # rf.py
-import pandas as pd
-import optuna
-import numpy as np
-from typing import Dict, Any
+from typing import Any, Dict
 
+import optuna
+import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error
 
-from backend.src.forecasting.models.base import BaseTimeSeriesModel
 from backend.src.forecasting.feature_engineering import create_regression_features
+from backend.src.forecasting.models.base import BaseTimeSeriesModel
 
 
 class RandomForestTimeSeriesModel(BaseTimeSeriesModel):

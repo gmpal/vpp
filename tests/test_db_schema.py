@@ -34,7 +34,7 @@ def test_drop_all_tables_in_public(schema_manager, mocker):
             tbl record;
         BEGIN
             FOR tbl IN
-                SELECT tablename 
+                SELECT tablename
                 FROM pg_tables
                 WHERE schemaname = 'public'
             LOOP

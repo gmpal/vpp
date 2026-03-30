@@ -1,8 +1,10 @@
 import os
-import pandas as pd
-from backend.src.db import DatabaseManager, CrudManager, SchemaManager
-from backend.src.streaming.communication import kafka_produce
 from multiprocessing import Process
+
+import pandas as pd
+
+from backend.src.db import CrudManager, DatabaseManager, SchemaManager
+from backend.src.streaming.communication import kafka_produce
 
 db_manager = DatabaseManager()
 crud_manager = CrudManager(db_manager)
@@ -30,6 +32,10 @@ def dump_csv_folder_to_db_and_start_streaming(folder_path: str):
         name_no_ext = filename.rsplit(".", 1)[0]  # -> "0GFA4K_solar"
         source_id = name_no_ext.split("_")[0]  # ->  "0GFA4K"
         source = name_no_ext.split("_")[1]  # -> "solar"
+
+        # Load is derived from households — skip any legacy load CSVs
+        if source == "load":
+            continue
 
         # 2. Load CSV into DataFrame
         #    We expect a single column 'value' or no header -> rename to 'value'.
@@ -79,14 +85,10 @@ def dump_csv_folder_to_db_and_start_streaming(folder_path: str):
         for t in data_tuples:
             db_manager.execute(query, t)
 
-        print(
-            f"Inserted {len(data_tuples)} rows from '{filename}' into table '{table_name}'."
-        )
+        print(f"Inserted {len(data_tuples)} rows from '{filename}' into table '{table_name}'.")
 
         new_producer_bundle = (source, source_id, df_to_stream)
-        new_producer_process = Process(
-            target=kafka_produce, args=(new_producer_bundle, 60)
-        )
+        new_producer_process = Process(target=kafka_produce, args=(new_producer_bundle, 60))
         new_producer_process.start()
 
 

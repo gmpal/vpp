@@ -1,16 +1,18 @@
-import mlflow
 import os
 import pickle
+import warnings
+
+import mlflow
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
-import warnings
+
+from backend.src.db import CrudManager, DatabaseManager, SchemaManager
 from backend.src.forecasting.models import (
     RandomForestTimeSeriesModel,
 )
-from backend.src.db import DatabaseManager, CrudManager, SchemaManager
-from backend.src.utils.logger import get_logger
 from backend.src.utils.data_utils import get_datasets_list
+from backend.src.utils.logger import get_logger
 
 # Suppress the FutureIncompatibilityWarning from holidays
 warnings.filterwarnings(
@@ -70,16 +72,13 @@ def train_pipeline():
     ]
 
     with mlflow.start_run(run_name="Timeseries_CV_Train"):
-
         all_datasets = get_datasets_list(db_manager, crud_manager)
 
         for dataset, source_id in all_datasets:
             # 1) Load the entire historical datasets
             raw_data = crud_manager.load_historical_data(dataset, source_id)
             if not raw_data:
-                logger.warning(
-                    f"No data found for dataset={dataset}, source_id={source_id}, skipping..."
-                )
+                logger.warning(f"No data found for dataset={dataset}, source_id={source_id}, skipping...")
                 continue
 
             # Convert the raw data to a DataFrame right after loading
@@ -87,9 +86,7 @@ def train_pipeline():
             df["time"] = pd.to_datetime(df["time"])
             df = df.set_index("time")
             # -----------------------------
-            logger.info(
-                f"[DATASET: {dataset}, Source: {source_id}] loaded. Shape: {df.shape}, [{df.index.min()} - {df.index.max()}]"
-            )
+            logger.info(f"[DATASET: {dataset}, Source: {source_id}] loaded. Shape: {df.shape}, [{df.index.min()} - {df.index.max()}]")
 
             # 2) TimeSeriesSplit CV for each model
             tscv = TimeSeriesSplit(n_splits=3)
@@ -120,9 +117,7 @@ def train_pipeline():
                             mlflow.log_param(f"{model_name}_{k}", v)
                         logger.info(f"Best params: {best_params}")
 
-                    for fold_idx, (train_idx, val_idx) in enumerate(
-                        tscv.split(full_values)
-                    ):
+                    for fold_idx, (train_idx, val_idx) in enumerate(tscv.split(full_values)):
                         df_train = full_values.iloc[train_idx]
                         df_val = full_values.iloc[val_idx]
 
@@ -130,9 +125,7 @@ def train_pipeline():
                         val_mse = model_obj.evaluate(df_val)
                         fold_mses.append(val_mse)
 
-                        mlflow.log_metric(
-                            f"{dataset}_{model_name}_fold_{fold_idx}_mse", val_mse
-                        )
+                        mlflow.log_metric(f"{dataset}_{model_name}_fold_{fold_idx}_mse", val_mse)
 
                     avg_mse = np.mean(fold_mses)
                     mlflow.log_metric(f"{dataset}_{model_name}_avg_cv_mse", avg_mse)
@@ -143,13 +136,9 @@ def train_pipeline():
                     if avg_mse < best_avg_mse:
                         best_avg_mse = avg_mse
                         best_model_name = model_name
-                        best_model_obj = cfg[
-                            "instance"
-                        ]  # Keep the config's model class
+                        best_model_obj = cfg["instance"]  # Keep the config's model class
 
-                logger.info(
-                    f"[DATASET: {dataset}] Best Model: {best_model_name} (Avg CV={best_avg_mse:.4f})"
-                )
+                logger.info(f"[DATASET: {dataset}] Best Model: {best_model_name} (Avg CV={best_avg_mse:.4f})")
 
                 # 3) Retrain best model on full data
                 best_model_obj.train(df)
@@ -159,9 +148,7 @@ def train_pipeline():
                     filename = f"{dataset}_{best_model_name}_final.pkl"
                     with open(filename, "wb") as f:
                         pickle.dump(best_model_obj, f)
-                    mlflow.log_artifact(
-                        filename, artifact_path=f"{dataset}_{best_model_name}_final"
-                    )
+                    mlflow.log_artifact(filename, artifact_path=f"{dataset}_{best_model_name}_final")
                     os.remove(filename)
 
                 # 5) Register model in Model Registry

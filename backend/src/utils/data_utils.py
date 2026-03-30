@@ -1,14 +1,13 @@
 """
 Utility functions for data operations across the VPP application.
 """
-from typing import List, Tuple, Optional
+
+from typing import List, Optional, Tuple
+
 from backend.src.db import CrudManager, DatabaseManager
 
 
-def get_datasets_list(
-    db_manager: DatabaseManager,
-    crud_manager: CrudManager
-) -> List[Tuple[str, Optional[str]]]:
+def get_datasets_list(db_manager: DatabaseManager, crud_manager: CrudManager) -> List[Tuple[str, Optional[str]]]:
     """
     Returns a list of (dataset, source_id) tuples.
     For renewable datasets, we retrieve all existing source_ids in the DB.

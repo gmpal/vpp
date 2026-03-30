@@ -3,7 +3,6 @@ from .connection import DatabaseManager
 
 
 class SchemaManager:
-
     def __init__(self, db_manager):
         self.db = db_manager
 
@@ -41,6 +40,33 @@ class SchemaManager:
         END $$;
         """
         self.db.execute(query)
+
+    def _create_users_table(self):
+        query = """
+        CREATE TABLE IF NOT EXISTS users (
+            user_id     VARCHAR(50) PRIMARY KEY,
+            username    VARCHAR(100) UNIQUE NOT NULL,
+            hashed_password TEXT NOT NULL,
+            created_at  TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        self.db.execute(query)
+
+    def _migrate_add_user_id(self):
+        """Additive migration: add user_id FK to households and energy_sources if missing."""
+        for table in ("households", "energy_sources"):
+            self.db.execute(f"""
+                ALTER TABLE {table}
+                ADD COLUMN IF NOT EXISTS user_id VARCHAR(50)
+                REFERENCES users(user_id) ON DELETE CASCADE;
+            """)
+
+    def _migrate_add_building_geometry(self):
+        """Additive migration: add geometry column to households if missing."""
+        self.db.execute("""
+            ALTER TABLE households
+            ADD COLUMN IF NOT EXISTS geometry JSONB;
+        """)
 
     def _create_households_table(self):
         query = """
@@ -167,7 +193,7 @@ class SchemaManager:
         query = """
         CREATE TABLE IF NOT EXISTS household_load (
             time TIMESTAMPTZ NOT NULL,
-            household_id VARCHAR(50) NOT NULL,
+            household_id VARCHAR(50) NOT NULL REFERENCES households(household_id) ON DELETE CASCADE,
             value DOUBLE PRECISION NOT NULL
         );
         SELECT create_hypertable('household_load', 'time', if_not_exists => TRUE);
@@ -175,9 +201,26 @@ class SchemaManager:
         """
         self.db.execute(query)
 
+    def _migrate_household_load_fk(self):
+        """Additive migration: add FK+cascade on household_load.household_id if missing."""
+        self.db.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'household_load_household_id_fkey'
+            ) THEN
+                ALTER TABLE household_load
+                ADD CONSTRAINT household_load_household_id_fkey
+                FOREIGN KEY (household_id) REFERENCES households(household_id) ON DELETE CASCADE;
+            END IF;
+        END $$;
+        """)
+
     def _try_create(self, create_fn):
         """Run a create method, silently skip if the table already exists."""
         import psycopg2
+
         try:
             create_fn()
         except psycopg2.errors.DuplicateTable:
@@ -185,8 +228,9 @@ class SchemaManager:
 
     def init_all_tables(self):
         """Create all tables only if they don't already exist. Safe to call on a live DB."""
+        self._create_users_table()  # must come first — households FKs it
         # households first — energy_sources has a FK to it
-        self._create_households_table()           # already uses IF NOT EXISTS
+        self._create_households_table()  # already uses IF NOT EXISTS
         self._try_create(self._create_energy_sources_table)
         self._try_create(self._create_market_table)
         self._try_create(self._create_market_forecast_table)
@@ -194,12 +238,35 @@ class SchemaManager:
         self._try_create(self._create_load_forecast_table)
         self._try_create(self._create_renewables_tables)
         self._try_create(self._create_renewables_forecast_tables)
-        self._create_electric_vehicles_table()    # already uses IF NOT EXISTS
-        self._create_household_load_table()       # already uses IF NOT EXISTS
+        self._create_electric_vehicles_table()  # already uses IF NOT EXISTS
+        self._create_household_load_table()  # already uses IF NOT EXISTS
+        self._migrate_add_user_id()  # idempotent: ADD COLUMN IF NOT EXISTS
+        self._migrate_household_load_fk()  # idempotent: ADD CONSTRAINT IF NOT EXISTS
+        self._migrate_add_building_geometry()  # idempotent: ADD COLUMN IF NOT EXISTS
+
+    def _drop_all_tables_except_users(self):
+        """Drop all tables in public schema except the users table."""
+        query = """
+        DO $$
+        DECLARE
+            tbl record;
+        BEGIN
+            FOR tbl IN
+                SELECT tablename
+                FROM pg_tables
+                WHERE schemaname = 'public'
+                AND tablename != 'users'
+            LOOP
+                EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE;', tbl.tablename);
+            END LOOP;
+        END $$;
+        """
+        self.db.execute(query)
 
     def reset_all_tables(self):
-        self._drop_all_tables_in_public()
+        self._drop_all_tables_except_users()
 
+        self._create_users_table()  # idempotent — preserved across reset
         # households must come before energy_sources (FK dependency)
         self._create_households_table()
         self._create_energy_sources_table()

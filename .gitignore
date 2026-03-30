@@ -15,7 +15,7 @@ mlflow_volume/
 backend/node_modules/
 frontend/node_modules/
 
-logs 
+logs
 
 # Distribution / packaging
 .Python
@@ -140,3 +140,32 @@ cython_debug/
 # vscode
 .vscode/
 **/.vscode/
+
+# Credentials
+credentials/
+
+# Scratch / non-deployment files
+deleteme.*
+combined_code.txt
+combined_docker.txt
+merge_codebase.py
+logs_*.txt
+edges.edg.xml
+nodes.nod.xml
+node_modules/
+package.json
+package-lock.json
+frontend/package.json.additions
+.claude/
+HOWTO.md
+MAP_FEATURE.md
+api.md
+tutorial.md
+general_pipeline.md
+presentation_suggestions.md
+project_gantt_chart.pdf
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/

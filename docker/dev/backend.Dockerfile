@@ -6,13 +6,23 @@ FROM python:3.10-slim
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies
+# Ensure subprocess-spawned scripts can resolve `from backend.src...` imports
+ENV PYTHONPATH=/app
+
+# Install system dependencies (gcc/git/netcat needed by ML libs and pipeline scripts)
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
+    gcc \
+    git \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Install ML/forecasting dependencies first (full mlflow superset of mlflow-skinny)
+COPY requirements/requirements-forecasting.txt .
+RUN pip install --no-cache-dir -r requirements-forecasting.txt
+
+# Install backend-specific dependencies (fastapi, uvicorn, pulp, etc.)
 COPY requirements/requirements-backend.txt .
 RUN pip install --no-cache-dir -r requirements-backend.txt
 

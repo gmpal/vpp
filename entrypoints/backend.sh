@@ -1,5 +1,5 @@
 #!/bin/sh
-# set -e
+set -e
 
 # Run initialization (e.g., create Kafka topics)
 # python create_topics.py

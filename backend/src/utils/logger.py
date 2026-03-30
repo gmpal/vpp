@@ -1,16 +1,22 @@
 """
 Centralized logging configuration for the VPP application.
-Provides consistent logging format across all modules.
+
+Development  → coloured human-readable output to stdout.
+Production   → JSON output to stdout (machine-parseable for ELK/Loki/CloudWatch).
+
+Public API is unchanged: call get_logger(__name__) in any module.
 """
+
 import logging
+import os
 import sys
-from pathlib import Path
 from typing import Optional
-from backend.src.config import get_settings
+
+from pythonjsonlogger import jsonlogger
 
 
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter with colors for console output."""
+    """Human-readable coloured formatter for local development."""
 
     grey = "\x1b[38;21m"
     blue = "\x1b[38;5;39m"
@@ -33,64 +39,38 @@ class ColoredFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def setup_logger(
-    name: str,
-    log_file: Optional[Path] = None,
-    level: Optional[str] = None
-) -> logging.Logger:
-    """
-    Set up a logger with consistent formatting.
+def _is_production() -> bool:
+    return os.getenv("ENVIRONMENT", "development").lower() == "production"
 
-    Args:
-        name: Name of the logger (typically __name__)
-        log_file: Optional file path to write logs to
-        level: Optional log level override (defaults to config setting)
 
-    Returns:
-        Configured logger instance
-    """
+def setup_logger(name: str, level: Optional[str] = None) -> logging.Logger:
     logger = logging.getLogger(name)
 
-    # Get log level from config if not provided
     if level is None:
-        settings = get_settings()
-        level = settings.log_level
+        level = os.getenv("LOG_LEVEL", "INFO")
 
-    logger.setLevel(getattr(logging, level.upper()))
+    logger.setLevel(getattr(logging, level.upper(), logging.INFO))
 
-    # Avoid adding handlers multiple times
     if logger.handlers:
         return logger
 
-    # Console handler with colors
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.DEBUG)
-    console_handler.setFormatter(ColoredFormatter())
-    logger.addHandler(console_handler)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
 
-    # File handler if specified (without colors)
-    if log_file:
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
+    if _is_production():
+        fmt = jsonlogger.JsonFormatter(
+            fmt="%(asctime)s %(name)s %(levelname)s %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%SZ",
+            rename_fields={"asctime": "timestamp", "levelname": "level", "name": "logger"},
         )
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(file_handler)
+    else:
+        fmt = ColoredFormatter()
+
+    handler.setFormatter(fmt)
+    logger.addHandler(handler)
 
     return logger
 
 
 def get_logger(name: str) -> logging.Logger:
-    """
-    Get or create a logger for the given name.
-
-    Args:
-        name: Logger name (typically __name__)
-
-    Returns:
-        Logger instance
-    """
     return setup_logger(name)

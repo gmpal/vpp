@@ -15,22 +15,22 @@ kafka-python
 prometheus_client
 pulp
 
-fastapi 
-uvicorn 
+fastapi
+uvicorn
 
 psycopg2-binary
 
-mlflow 
-# evidently 
-optuna 
-# tensorflow 
+mlflow
+# evidently
+optuna
+# tensorflow
 # keras
 # torch
 # pytorch-lightning
 # pytorch-forecasting
 # apache-airflow
 
-pmdarima 
+pmdarima
 plotly
 # darts
 asyncpg

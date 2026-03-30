@@ -1,7 +1,7 @@
 from .arima import ARIMATimeSeriesModel
+from .mlp import MLPTimeSeriesModel
 from .prophet import ProphetTimeSeriesModel
 from .rf import RandomForestTimeSeriesModel
-from .mlp import MLPTimeSeriesModel
 
 # from .tft import TFTTimeSeriesModel
 

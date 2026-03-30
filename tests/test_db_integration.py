@@ -1,9 +1,9 @@
 # tests/test_db_integration.py - Integration tests for the database schema and CRUD operations
 """
-Make sure you run 
-> docker run -d --name timescale-test -p 5432:5432 -e POSTGRES_PASSWORD=testpass timescale/timescaledb-ha:pg17 
-before running this suite  
-And stop it afterwards with 
+Make sure you run
+> docker run -d --name timescale-test -p 5432:5432 -e POSTGRES_PASSWORD=testpass timescale/timescaledb-ha:pg17
+before running this suite
+And stop it afterwards with
 > docker stop timescale-test
 > docker rm timescale-test
 """

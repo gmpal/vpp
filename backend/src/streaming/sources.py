@@ -1,18 +1,16 @@
+import random
+import string
 from multiprocessing import Process
 
 from backend.src.pipelines.generation import (
-    generate_weather_data,
     generate_pv_data,
+    generate_weather_data,
     read_generation_config,
 )
-
 from backend.src.streaming.communication import (
-    make_single_producer_info,
     kafka_produce,
+    make_single_producer_info,
 )
-
-import random
-import string
 
 
 def create_new_source(source_type: str, kakfa_flag=False, latitude=None, longitude=None):
@@ -69,14 +67,10 @@ def create_new_source(source_type: str, kakfa_flag=False, latitude=None, longitu
 
     if kakfa_flag:
         # Update producers_bundles to include the new source
-        new_producer_bundle = make_single_producer_info(
-            output_path, source_type, source_id
-        )
+        new_producer_bundle = make_single_producer_info(output_path, source_type, source_id)
 
         # Start a new Kafka producer process for the new source
-        new_producer_process = Process(
-            target=kafka_produce, args=(new_producer_bundle, sleeping_time)
-        )
+        new_producer_process = Process(target=kafka_produce, args=(new_producer_bundle, sleeping_time))
         new_producer_process.start()
 
         return new_producer_process, source_id

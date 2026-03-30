@@ -1,5 +1,6 @@
 # db/connection.py
 import psycopg2
+
 from backend.src.config import get_settings
 
 

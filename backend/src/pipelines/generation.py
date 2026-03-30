@@ -1,12 +1,10 @@
-import pandas as pd
-import numpy as np
-import pvlib
-from pvlib.pvsystem import PVSystem
-from pvlib.modelchain import ModelChain as PVModelChain
-from pvlib.location import Location
-
-import configparser
 from datetime import datetime
+
+import numpy as np
+import pandas as pd
+from pvlib.location import Location
+from pvlib.modelchain import ModelChain as PVModelChain
+from pvlib.pvsystem import PVSystem
 
 # TODO: change saving folder structure
 
@@ -72,61 +70,38 @@ def generate_weather_data(
     # Define base patterns for synthetic weather data
 
     # Solar radiation (GHI) follows a sine wave pattern for daylight hours (sunrise to sunset)
-    solar_radiation = np.maximum(
-        0, np.sin(np.linspace(-np.pi / 2, np.pi / 2, len(time_index))) * 1000
-    )
+    solar_radiation = np.maximum(0, np.sin(np.linspace(-np.pi / 2, np.pi / 2, len(time_index))) * 1000)
 
     # Wind speed follows a cosine wave pattern, typically stronger at night
-    wind_speed_pattern = np.clip(
-        np.cos(np.linspace(0, 2 * np.pi, len(time_index))) * 6 + 6, 3, 12
-    )
+    wind_speed_pattern = np.clip(np.cos(np.linspace(0, 2 * np.pi, len(time_index))) * 6 + 6, 3, 12)
 
     # Temperature follows a sine wave pattern, with colder temperatures at night
-    temperature_pattern = np.clip(
-        5 + np.sin(np.linspace(-np.pi / 2, np.pi / 2, len(time_index))) * 10, -5, 15
-    )
+    temperature_pattern = np.clip(5 + np.sin(np.linspace(-np.pi / 2, np.pi / 2, len(time_index))) * 10, -5, 15)
 
     # Add random noise to introduce variability for realism
-    solar_radiation += np.random.normal(
-        0, 50, len(time_index)
-    )  # Noise for solar radiation
-    wind_speed_pattern += np.random.normal(
-        0, 1, len(time_index)
-    )  # Noise for wind speed
-    temperature_pattern += np.random.normal(
-        0, 1, len(time_index)
-    )  # Noise for temperature
+    solar_radiation += np.random.normal(0, 50, len(time_index))  # Noise for solar radiation
+    wind_speed_pattern += np.random.normal(0, 1, len(time_index))  # Noise for wind speed
+    temperature_pattern += np.random.normal(0, 1, len(time_index))  # Noise for temperature
 
     # Create the weather DataFrame with all variables
     weather_data = pd.DataFrame(
         {
             # Solar data: GHI (Global Horizontal Irradiance), DNI (Direct Normal Irradiance), DHI (Diffuse Horizontal Irradiance)
-            "ghi": np.clip(
-                solar_radiation, 0, 1000
-            ),  # Clip values to realistic range (0–1000 W/m²)
+            "ghi": np.clip(solar_radiation, 0, 1000),  # Clip values to realistic range (0–1000 W/m²)
             "dni": np.clip(solar_radiation * 0.8, 0, 800),  # DNI as 80% of GHI
             "dhi": np.clip(solar_radiation * 0.2, 0, 200),  # DHI as 20% of GHI
             # Wind speed at hub height (100m)
-            ("wind_speed", 100): np.clip(
-                wind_speed_pattern, 3, 12
-            ),  # Clip values to 3–12 m/s
+            ("wind_speed", 100): np.clip(wind_speed_pattern, 3, 12),  # Clip values to 3–12 m/s
             # Temperature at 2m above ground level
-            ("temperature", 2): np.clip(
-                temperature_pattern, -10, 15
-            ),  # Clip values to -10°C to 15°C
+            ("temperature", 2): np.clip(temperature_pattern, -10, 15),  # Clip values to -10°C to 15°C
             # Atmospheric pressure at sea level
-            ("pressure", 0): 101325
-            + np.random.normal(
-                0, 500, len(time_index)
-            ),  # Add noise to baseline pressure (Pa)
+            ("pressure", 0): 101325 + np.random.normal(0, 500, len(time_index)),  # Add noise to baseline pressure (Pa)
         },
         index=time_index,
     )
 
     # Ensure columns with MultiIndex for variables with height (required for windpowerlib)
-    weather_data.columns = pd.MultiIndex.from_tuples(
-        [(col if isinstance(col, tuple) else (col, "")) for col in weather_data.columns]
-    )
+    weather_data.columns = pd.MultiIndex.from_tuples([(col if isinstance(col, tuple) else (col, "")) for col in weather_data.columns])
 
     if output_path:
         weather_data.to_csv(output_path + f"{source_id}_weather_data.csv")
@@ -189,18 +164,12 @@ def generate_pv_data(
 
     if weather_data is None:
         if weather_data_path is None:
-            raise ValueError(
-                "You need to provide either weather_data or weather_data_path"
-            )
-        weather = pd.read_csv(
-            weather_data_path, index_col=0, parse_dates=True, header=0
-        )
+            raise ValueError("You need to provide either weather_data or weather_data_path")
+        weather = pd.read_csv(weather_data_path, index_col=0, parse_dates=True, header=0)
     # Drop second level of header
     weather_data.columns = weather_data.columns.droplevel(1)
 
-    weather = weather_data.iloc[
-        1:, :-1
-    ]  # drop the second header and the last column (pressure)
+    weather = weather_data.iloc[1:, :-1]  # drop the second header and the last column (pressure)
     # rename temperature to temp_air
     weather.rename(columns={"temperature": "temp_air"}, inplace=True)
     # sort the columns

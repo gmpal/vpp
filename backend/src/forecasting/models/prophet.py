@@ -1,6 +1,6 @@
+import numpy as np
 import optuna
 import pandas as pd
-import numpy as np
 from prophet import Prophet
 from sklearn.metrics import mean_squared_error
 
@@ -33,15 +33,9 @@ class ProphetTimeSeriesModel(BaseTimeSeriesModel):
         """
         # Example hyperparams to tune:
         params = {
-            "seasonality_mode": trial.suggest_categorical(
-                "seasonality_mode", ["additive", "multiplicative"]
-            ),
-            "changepoint_prior_scale": trial.suggest_float(
-                "changepoint_prior_scale", 0.001, 0.5, log=True
-            ),
-            "seasonality_prior_scale": trial.suggest_float(
-                "seasonality_prior_scale", 0.1, 10.0, log=True
-            ),
+            "seasonality_mode": trial.suggest_categorical("seasonality_mode", ["additive", "multiplicative"]),
+            "changepoint_prior_scale": trial.suggest_float("changepoint_prior_scale", 0.001, 0.5, log=True),
+            "seasonality_prior_scale": trial.suggest_float("seasonality_prior_scale", 0.1, 10.0, log=True),
         }
         model = Prophet(**params)
         model.fit(df_prophet)
@@ -58,9 +52,7 @@ class ProphetTimeSeriesModel(BaseTimeSeriesModel):
         df_prophet = self._prepare_df_for_prophet(df)
 
         study = optuna.create_study(direction="minimize")
-        study.optimize(
-            lambda trial: self._objective(trial, df_prophet), n_trials=n_trials
-        )
+        study.optimize(lambda trial: self._objective(trial, df_prophet), n_trials=n_trials)
 
         self.params.update(study.best_params)
         return study.best_params
@@ -114,9 +106,7 @@ class ProphetTimeSeriesModel(BaseTimeSeriesModel):
             pd.DataFrame: Prophet forecast with columns: ds, yhat, yhat_lower, yhat_upper, ...
         """
 
-        freq = kwargs.get(
-            "freq", "D"
-        )  # TODO: check frequencies mathcing between models
+        freq = kwargs.get("freq", "D")  # TODO: check frequencies mathcing between models
 
         if self.model is None:
             raise ValueError("Model is not trained. Call train() first.")
