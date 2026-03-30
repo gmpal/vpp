@@ -1,0 +1,14 @@
+[tool.ruff]
+line-length = 160
+exclude = ["tests/*", "frontend/*", "node_modules/*"]
+
+[tool.ruff.lint]
+# E/W = pycodestyle, F = pyflakes, I = isort, C90 = mccabe complexity
+select = ["E", "W", "F", "I", "C90"]
+ignore = [
+    "E226",  # missing whitespace around arithmetic operator
+    "E302",  # expected 2 blank lines
+]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
