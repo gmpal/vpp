@@ -3,17 +3,17 @@
 // This file is maintained for backward compatibility but should be consolidated.
 
 export interface HistoricalDataPoint {
-    timestamp: string;
-    value: number;
+  timestamp: string;
+  value: number;
 }
 
 export interface ForecastedDataPoint {
-    timestamp: string;
-    value: number;
+  timestamp: string;
+  value: number;
 }
 
 export interface CombinedDataPoint {
-    timestamp: string;
-    value: number;
-    type: 'Historical' | 'Forecasted';
+  timestamp: string;
+  value: number;
+  type: "Historical" | "Forecasted";
 }

@@ -1,69 +1,91 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
-  Box, Typography, Paper, FormControl, InputLabel, Select, MenuItem, Alert
-} from '@mui/material';
+  Box,
+  Typography,
+  Paper,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Alert,
+} from "@mui/material";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
-} from 'recharts';
-import { fetchForecastedData, fetchSourceIDs, ForecastedDataPoint } from '../api';
-import { format } from 'date-fns';
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+} from "recharts";
+import {
+  fetchForecastedData,
+  fetchSourceIDs,
+  ForecastedDataPoint,
+} from "../api";
+import { format } from "date-fns";
 
-const SOURCE_TYPES = ['solar', 'load', 'market'];
+const SOURCE_TYPES = ["solar", "load", "market"];
 
 const UNIT_MAP: Record<string, string> = {
-  solar: ' kW',
-  load: ' kW',
-  market: ' €/MWh',
+  solar: " kW",
+  load: " kW",
+  market: " €/MWh",
 };
 
-const needsSourceId = (source: string) => source === 'solar';
+const needsSourceId = (source: string) => source === "solar";
 
 const formatTimestamp = (ts: string): string => {
   try {
-    return format(new Date(ts), 'HH:mm dd/MM');
+    return format(new Date(ts), "HH:mm dd/MM");
   } catch {
     return ts;
   }
 };
 
 const ForecastTab: React.FC = () => {
-  const [selectedSource, setSelectedSource] = useState<string>('solar');
+  const [selectedSource, setSelectedSource] = useState<string>("solar");
   const [sourceIds, setSourceIds] = useState<string[]>([]);
-  const [selectedSourceId, setSelectedSourceId] = useState<string>('');
+  const [selectedSourceId, setSelectedSourceId] = useState<string>("");
   const [forecastData, setForecastData] = useState<ForecastedDataPoint[]>([]);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<string>("");
 
   // Fetch source IDs when source type changes
   useEffect(() => {
     if (!needsSourceId(selectedSource)) {
       setSourceIds([]);
-      setSelectedSourceId('');
+      setSelectedSourceId("");
       return;
     }
     fetchSourceIDs(selectedSource)
       .then((ids) => {
         setSourceIds(ids);
-        setSelectedSourceId(ids[0] ?? '');
+        setSelectedSourceId(ids[0] ?? "");
       })
       .catch(() => {
         setSourceIds([]);
-        setSelectedSourceId('');
+        setSelectedSourceId("");
       });
   }, [selectedSource]);
 
   // Fetch forecast data when source or sourceId changes
   useEffect(() => {
-    const sourceIdParam = needsSourceId(selectedSource) ? selectedSourceId : undefined;
+    const sourceIdParam = needsSourceId(selectedSource)
+      ? selectedSourceId
+      : undefined;
 
     // If source needs a source_id but none is selected yet, skip fetching
     if (needsSourceId(selectedSource) && !selectedSourceId) return;
 
-    setError('');
+    setError("");
     fetchForecastedData(selectedSource, sourceIdParam)
       .then((data) => setForecastData(data))
       .catch(() => {
         setForecastData([]);
-        setError('Failed to fetch forecast data. Check that the backend is running.');
+        setError(
+          "Failed to fetch forecast data. Check that the backend is running.",
+        );
       });
   }, [selectedSource, selectedSourceId]);
 
@@ -72,7 +94,7 @@ const ForecastTab: React.FC = () => {
     value: point.value,
   }));
 
-  const unit = UNIT_MAP[selectedSource] ?? '';
+  const unit = UNIT_MAP[selectedSource] ?? "";
 
   return (
     <Box sx={{ p: 3 }}>
@@ -87,7 +109,7 @@ const ForecastTab: React.FC = () => {
       )}
 
       <Paper sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+        <Box sx={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
           <FormControl sx={{ minWidth: 160 }}>
             <InputLabel id="forecast-source-label">Source Type</InputLabel>
             <Select
@@ -126,7 +148,14 @@ const ForecastTab: React.FC = () => {
 
       <Paper sx={{ p: 3, borderRadius: 2 }}>
         {chartData.length === 0 ? (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 300 }}>
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: 300,
+            }}
+          >
             <Typography variant="body1" color="text.secondary">
               No forecast data available. Run inference first.
             </Typography>
@@ -146,7 +175,10 @@ const ForecastTab: React.FC = () => {
                 strokeDasharray="5 5"
                 strokeWidth={2}
                 dot={false}
-                name={`${selectedSource.charAt(0).toUpperCase() + selectedSource.slice(1)} Forecast`}
+                name={`${
+                  selectedSource.charAt(0).toUpperCase() +
+                  selectedSource.slice(1)
+                } Forecast`}
               />
             </LineChart>
           </ResponsiveContainer>

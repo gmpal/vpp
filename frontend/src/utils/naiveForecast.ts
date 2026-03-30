@@ -3,7 +3,8 @@
  * Given recent values, extrapolates the next `steps` points.
  */
 export function naiveForecast(values: number[], steps: number = 5): number[] {
-  if (values.length < 2) return Array(steps).fill(values[values.length - 1] ?? 0);
+  if (values.length < 2)
+    return Array(steps).fill(values[values.length - 1] ?? 0);
   const result: number[] = [];
   const buf = [...values];
   for (let i = 0; i < steps; i++) {
