@@ -4,7 +4,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.api.auth import get_current_user
-from backend.api.models import Household, HouseholdCreate
+from backend.api.models import Household, HouseholdCreate, HouseholdUpdate
 from backend.src.db import CrudManager
 from backend.src.dependencies import get_crud_manager
 from backend.src.pipelines.generation import generate_synthetic_load_data
@@ -88,6 +88,27 @@ def get_household(
     if not hh:
         raise HTTPException(404, "Household not found")
     return hh
+
+
+@router.patch("/households/{household_id}", response_model=Household)
+def update_household(
+    household_id: str,
+    req: HouseholdUpdate,
+    crud: CrudManager = Depends(get_crud_manager),
+    current_user: dict = Depends(get_current_user),
+):
+    hh = crud.get_household(household_id, user_id=current_user["user_id"])
+    if not hh:
+        raise HTTPException(404, "Household not found")
+
+    updates = req.model_dump(exclude_unset=True)
+    if updates:
+        crud.update_household(household_id, user_id=current_user["user_id"], **updates)
+
+    updated = crud.get_household(household_id, user_id=current_user["user_id"])
+    if not updated:
+        raise HTTPException(404, "Household not found")
+    return updated
 
 
 @router.delete("/households/{household_id}")

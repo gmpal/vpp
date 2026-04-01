@@ -12,17 +12,22 @@ logger = get_logger(__name__)
 
 
 def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
-    solar_ids = crud_manager.query_source_ids("solar")
-    df_solar_total = None
-    reference_index = None
-    for s_id in solar_ids:
-        df_solar = crud_manager.load_forecasted_data("solar", source_id=s_id, start=start, end=end)
-        if df_solar_total is None:
-            df_solar_total = df_solar.copy()
-            reference_index = df_solar_total.index
-        else:
-            df_solar.index = reference_index
-            df_solar_total["yhat"] = df_solar_total["yhat"].add(df_solar["yhat"], fill_value=0)
+    # Aggregate all renewable forecasts (solar + wind)
+    def _aggregate_renewable_forecasts(source_type, start, end):
+        ids = crud_manager.query_source_ids(source_type)
+        total = None
+        ref_index = None
+        for s_id in ids:
+            df = crud_manager.load_forecasted_data(source_type, source_id=s_id, start=start, end=end)
+            if total is None:
+                total = df.copy()
+                ref_index = total.index
+            else:
+                df.index = ref_index
+                total["yhat"] = total["yhat"].add(df["yhat"], fill_value=0)
+        return total, ref_index
+
+    df_solar_total, reference_index = _aggregate_renewable_forecasts("solar", start, end)
     if df_solar_total is None:
         df_solar_total = pd.DataFrame(
             columns=["solar"],
@@ -31,6 +36,18 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
 
     df_solar_total.rename(columns={"yhat": "solar"}, inplace=True)
 
+    # Add wind production
+    df_wind_total, wind_ref = _aggregate_renewable_forecasts("wind", start, end)
+    if df_wind_total is not None:
+        df_wind_total.rename(columns={"yhat": "wind"}, inplace=True)
+        if reference_index is None:
+            reference_index = wind_ref
+    else:
+        df_wind_total = pd.DataFrame(
+            {"wind": 0.0},
+            index=(reference_index if reference_index is not None else pd.date_range(start or "2025-01-01", periods=1, freq="h")),
+        )
+
     df_load = crud_manager.load_forecasted_data("load", source_id=None, start=start, end=end)
     df_load.rename(columns={"yhat": "load"}, inplace=True)
 
@@ -38,14 +55,17 @@ def load_optimization_data(start: str = None, end: str = None) -> pd.DataFrame:
     df_market.rename(columns={"yhat": "price"}, inplace=True)
 
     df_solar_total = df_solar_total["solar"].to_frame()
+    df_wind_total = df_wind_total["wind"].to_frame()
     df_load = df_load["load"].to_frame()
     df_market = df_market["price"].to_frame()
 
     reference_index = df_solar_total.index
+    df_wind_total.index = reference_index
     df_load.index = reference_index
     df_market.index = reference_index
 
-    df = pd.concat([df_solar_total, df_load, df_market], axis=1)
+    df = pd.concat([df_solar_total, df_wind_total, df_load, df_market], axis=1)
+    df["wind"] = df["wind"].fillna(0)
     logger.debug("Optimization input shape: %s", df.shape)
     return df
 
@@ -122,7 +142,7 @@ def optimize(
         total_charge_t = pulp.lpSum([battery_charge[(b_label, t)] for b_label, _t in battery_charge if _t == t])
         total_discharge_t = pulp.lpSum([battery_discharge[(b_label, t)] for b_label, _t in battery_discharge if _t == t])
 
-        net_excess = df["solar"].iloc[t] - df["load"].iloc[t] + total_charge_t - total_discharge_t
+        net_excess = df["solar"].iloc[t] + df["wind"].iloc[t] - df["load"].iloc[t] + total_charge_t - total_discharge_t
 
         problem += grid_sell[t] >= net_excess
         problem += grid_sell[t] >= 0

@@ -196,6 +196,70 @@ def generate_pv_data(
     return ac_power
 
 
+def generate_wind_data(
+    weather_data_path: str = None,
+    weather_data: pd.DataFrame = None,
+    output_path: str = "../data/",
+    source_id: str = "1",
+    latitude: float = None,
+    longitude: float = None,
+) -> pd.DataFrame:
+    """
+    Generate wind turbine power output based on weather data using windpowerlib.
+
+    Uses an Enercon E-33 (330 kW) as a small community wind turbine typical
+    for Belgian energy communities.
+
+    Parameters:
+        weather_data_path: Path to CSV with weather data.
+        weather_data: DataFrame with weather data (MultiIndex columns).
+        output_path: Path to save output CSV. None to skip saving.
+        source_id: Unique identifier for this wind source.
+        latitude: Latitude (unused by windpowerlib but kept for API consistency).
+        longitude: Longitude (unused by windpowerlib but kept for API consistency).
+
+    Returns:
+        pd.DataFrame: Wind power output time series (W).
+    """
+    # TODO: generalise turbine specs for non-Belgian markets
+    from windpowerlib import ModelChain as WindModelChain
+    from windpowerlib import WindTurbine
+
+    # Small community turbine — Enercon E-33 (common in Belgian small wind)
+    # Define power curve explicitly (windpowerlib's DB may lack it)
+    turbine = WindTurbine(
+        hub_height=50,
+        rotor_diameter=33,
+        nominal_power=330000,  # 330 kW
+        power_curve=pd.DataFrame({
+            "value": [0, 0, 5000, 16000, 35000, 60000, 100000, 150000, 210000, 270000, 310000, 325000, 330000, 330000, 330000, 0],
+            "wind_speed": [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 25, 25.1],
+        }),
+    )
+
+    if weather_data is None:
+        if weather_data_path is None:
+            raise ValueError("You need to provide either weather_data or weather_data_path")
+        weather_data = pd.read_csv(weather_data_path, index_col=0, parse_dates=True, header=[0, 1])
+
+    # windpowerlib requires roughness_length in the weather data
+    if ("roughness_length", 0) not in weather_data.columns:
+        # Belgian flat terrain default roughness length: 0.1 (open agricultural land)
+        weather_data[("roughness_length", 0)] = 0.1
+
+    mc = WindModelChain(turbine)
+    mc.run_model(weather_data)
+    power_output = mc.power_output
+
+    # Clip to non-negative (windpowerlib can produce tiny negatives from interpolation)
+    power_output = power_output.clip(lower=0)
+
+    if output_path:
+        power_output.to_csv(output_path + f"{source_id}_wind.csv", header=True)
+
+    return power_output
+
+
 def generate_synthetic_load_data(
     starting_date: str = "2025-01-07 00:00",
     num_days: int = 7,

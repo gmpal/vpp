@@ -5,6 +5,7 @@ from multiprocessing import Process
 from backend.src.pipelines.generation import (
     generate_pv_data,
     generate_weather_data,
+    generate_wind_data,
     read_generation_config,
 )
 from backend.src.streaming.communication import (
@@ -64,6 +65,16 @@ def create_new_source(source_type: str, kakfa_flag=False, latitude=None, longitu
             latitude=latitude,
             longitude=longitude,
         )
+    elif source_type == "wind":
+        generate_wind_data(
+            weather_data=weather_data,
+            output_path=output_path,
+            source_id=source_id,
+            latitude=latitude,
+            longitude=longitude,
+        )
+    else:
+        raise ValueError(f"Unsupported source_type: {source_type}. Must be 'solar' or 'wind'.")
 
     if kakfa_flag:
         # Update producers_bundles to include the new source

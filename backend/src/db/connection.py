@@ -19,7 +19,7 @@ class DatabaseManager:
         else:
             self.config = config
 
-        self.renewables = ["solar"]
+        self.renewables = ["solar", "wind"]
 
     def connect(self):
         """Return a new database connection."""

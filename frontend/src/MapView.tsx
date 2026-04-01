@@ -573,16 +573,6 @@ const MapView: React.FC = () => {
               <ListItemText primary="Dashboard" secondary="Manage resources" />
             </ListItemButton>
 
-            <ListItemButton onClick={() => navigate("/renewables")}>
-              <ListItemIcon>
-                <ShowChartIcon />
-              </ListItemIcon>
-              <ListItemText
-                primary="Renewables"
-                secondary="View historical & forecasts"
-              />
-            </ListItemButton>
-
             <ListItemButton onClick={() => navigate("/grid")}>
               <ListItemIcon>
                 <BatteryChargingFullIcon />

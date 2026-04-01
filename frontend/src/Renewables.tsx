@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { CommunitySummary, fetchSourceIDs, getCommunitySummary } from "./api.ts";
+import useLiveSeries from "./hooks/useLiveSeries";
 import {
-  fetchSourceIDs,
-  fetchHistoricalData,
-  HistoricalDataPoint,
-} from "./api.ts";
-import {
+  Alert,
+  Chip,
   Container,
   Typography,
   Paper,
@@ -14,6 +13,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Stack,
 } from "@mui/material";
 import {
   LineChart,
@@ -37,21 +37,45 @@ function formatTimestamp(timestamp: string): string {
 
 const SOURCE_COLORS: Record<string, string> = {
   solar: "#f0c040",
-  load: "#ef5350",
+  wind: "#42a5f5",
 };
+
+const SOURCES = ["solar", "wind"];
+
+const needsSourceId = (source: string): boolean =>
+  source === "solar" || source === "wind";
 
 const Renewables: React.FC = () => {
   const [selectedSource, setSelectedSource] = useState<string>("solar");
   const [selectedSourceID, setSelectedSourceID] = useState<string>("");
   const [sourceIDs, setSourceIDs] = useState<string[]>([]);
-  const [selectedTopN, setSelectedTopN] = useState<number>(50);
-  const [chartData, setChartData] = useState<{ time: string; value: number }[]>(
-    [],
+  const [selectedTopN, setSelectedTopN] = useState<number>(120);
+  const [storageSummary, setStorageSummary] = useState<CommunitySummary | null>(
+    null,
+  );
+  const [storageError, setStorageError] = useState<string>("");
+
+  const liveEnabled = !needsSourceId(selectedSource) || !!selectedSourceID;
+  const { data: liveData, loading, error, connected } = useLiveSeries({
+    source: selectedSource,
+    sourceId: selectedSourceID || undefined,
+    historicalPoints: selectedTopN,
+    maxPoints: selectedTopN,
+    enabled: liveEnabled,
+  });
+
+  const chartData = useMemo(
+    () =>
+      liveData.map((p) => ({
+        time: formatTimestamp(p.timestamp),
+        value: p.value,
+      })),
+    [liveData],
   );
 
   useEffect(() => {
     async function updateSourceIDs() {
-      if (selectedSource === "market" || selectedSource === "load") {
+      if (!needsSourceId(selectedSource)) {
         setSourceIDs([]);
         setSelectedSourceID("");
         return;
@@ -67,39 +91,43 @@ const Renewables: React.FC = () => {
       }
     }
     updateSourceIDs();
-  }, [selectedSource]);
+  }, [selectedSource, selectedSourceID]);
 
   useEffect(() => {
-    async function loadHistorical() {
+    let cancelled = false;
+
+    async function refreshStorage() {
       try {
-        const sourceId =
-          selectedSource === "solar" ? selectedSourceID : undefined;
-        if (selectedSource === "solar" && !sourceId) {
-          setChartData([]);
+        const summary = await getCommunitySummary();
+        if (cancelled) {
           return;
         }
-        const data: HistoricalDataPoint[] = await fetchHistoricalData(
-          selectedSource,
-          sourceId,
-          undefined,
-          undefined,
-          selectedTopN,
-        );
-        setChartData(
-          data.map((p) => ({
-            time: formatTimestamp(p.timestamp),
-            value: p.value,
-          })),
-        );
-      } catch (err) {
-        console.error("Error fetching historical data:", err);
-        setChartData([]);
+        setStorageSummary(summary);
+        setStorageError("");
+      } catch {
+        if (!cancelled) {
+          setStorageError("Could not load storage summary");
+        }
       }
     }
-    loadHistorical();
-  }, [selectedSource, selectedSourceID, selectedTopN]);
+
+    refreshStorage();
+    const interval = setInterval(refreshStorage, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
 
   const lineColor = SOURCE_COLORS[selectedSource] ?? "#8884d8";
+  const totalStorage =
+    (storageSummary?.ev_soc_total ?? 0) +
+    (storageSummary?.battery_soc_total ?? 0);
+  const totalStorageCapacity =
+    (storageSummary?.ev_soc_capacity ?? 0) +
+    (storageSummary?.battery_soc_capacity ?? 0);
+  const storagePct =
+    totalStorageCapacity > 0 ? (totalStorage / totalStorageCapacity) * 100 : 0;
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -107,6 +135,21 @@ const Renewables: React.FC = () => {
         <Typography variant="h2" component="h1" gutterBottom align="center">
           Renewables
         </Typography>
+
+        <Stack direction="row" spacing={1} justifyContent="center" mb={2}>
+          <Chip
+            label={connected ? "Live connected" : "Reconnecting"}
+            color={connected ? "success" : "warning"}
+            size="small"
+          />
+          <Chip label={`${selectedTopN} points`} size="small" variant="outlined" />
+        </Stack>
+
+        {(error || storageError) && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {error || storageError}
+          </Alert>
+        )}
 
         <Grid item xs={12}>
           <Paper elevation={3} sx={{ p: 2 }}>
@@ -119,14 +162,17 @@ const Renewables: React.FC = () => {
                 label="Select Source"
                 onChange={(e) => setSelectedSource(e.target.value as string)}
               >
-                <MenuItem value="solar">Solar</MenuItem>
-                <MenuItem value="load">Load</MenuItem>
+                {SOURCES.map((source) => (
+                  <MenuItem key={source} value={source}>
+                    {source.charAt(0).toUpperCase() + source.slice(1)}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
           </Paper>
         </Grid>
 
-        {selectedSource !== "market" && selectedSource !== "load" && (
+        {needsSourceId(selectedSource) && (
           <Grid item xs={12}>
             <Paper elevation={3} sx={{ p: 2 }}>
               <FormControl fullWidth>
@@ -164,7 +210,7 @@ const Renewables: React.FC = () => {
                 label="Select Top N"
                 onChange={(e) => setSelectedTopN(e.target.value as number)}
               >
-                {[50, 100, 150, 200].map((n) => (
+                {[60, 120, 180, 240].map((n) => (
                   <MenuItem key={n} value={n}>
                     {n}
                   </MenuItem>
@@ -175,7 +221,11 @@ const Renewables: React.FC = () => {
         </Grid>
 
         <Paper elevation={3} sx={{ p: 2 }}>
-          {chartData.length === 0 ? (
+          {loading && chartData.length === 0 ? (
+            <Typography color="text.secondary" align="center" py={4}>
+              Connecting live stream...
+            </Typography>
+          ) : chartData.length === 0 ? (
             <Typography color="text.secondary" align="center" py={4}>
               No data
             </Typography>
@@ -204,6 +254,40 @@ const Renewables: React.FC = () => {
                 />
               </LineChart>
             </ResponsiveContainer>
+          )}
+        </Paper>
+
+        <Paper elevation={3} sx={{ p: 2, mt: 2 }}>
+          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+            Energy Storage
+          </Typography>
+          {totalStorageCapacity <= 0 ? (
+            <Typography color="text.secondary">No storage assets detected.</Typography>
+          ) : (
+            <Box>
+              <Typography variant="body2" color="text.secondary">
+                {totalStorage.toFixed(1)} / {totalStorageCapacity.toFixed(1)} kWh ({storagePct.toFixed(0)}%)
+              </Typography>
+              <Box
+                sx={{
+                  width: "100%",
+                  height: 10,
+                  borderRadius: 5,
+                  mt: 1,
+                  bgcolor: "rgba(0,0,0,0.08)",
+                  overflow: "hidden",
+                }}
+              >
+                <Box
+                  sx={{
+                    width: `${Math.max(0, Math.min(100, storagePct))}%`,
+                    height: "100%",
+                    bgcolor: storagePct > 80 ? "#43a047" : "#1e88e5",
+                    transition: "width 0.4s ease",
+                  }}
+                />
+              </Box>
+            </Box>
           )}
         </Paper>
       </Box>

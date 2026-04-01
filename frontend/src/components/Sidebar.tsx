@@ -27,7 +27,6 @@ import BoltIcon from "@mui/icons-material/Bolt";
 import HomeIcon from "@mui/icons-material/Home";
 import ElectricCarIcon from "@mui/icons-material/ElectricCar";
 import BarChartIcon from "@mui/icons-material/BarChart";
-import WbSunnyIcon from "@mui/icons-material/WbSunny";
 import ShowChartIcon from "@mui/icons-material/ShowChart";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import DeleteIcon from "@mui/icons-material/Delete";
@@ -74,7 +73,6 @@ const navItems = [
   { path: "/community", label: "Community", icon: <BarChartIcon /> },
   { path: "/households", label: "Households", icon: <HomeIcon /> },
   { path: "/vehicles", label: "Vehicles", icon: <ElectricCarIcon /> },
-  { path: "/renewables", label: "Renewables", icon: <WbSunnyIcon /> },
   { path: "/grid", label: "Grid", icon: <BoltIcon /> },
   { path: "/profiles", label: "Profiles", icon: <ShowChartIcon /> },
   { path: "/forecast", label: "Forecast", icon: <TrendingUpIcon /> },

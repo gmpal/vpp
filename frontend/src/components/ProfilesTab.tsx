@@ -15,6 +15,13 @@ import {
   fetchSourceIDs,
   HistoricalDataPoint,
 } from "../api";
+import TimeWindowSelect from "./TimeWindowSelect";
+import {
+  DEFAULT_TIME_WINDOW_MINUTES,
+  formatTimeWithSeconds,
+  getPointLimitForWindow,
+  getTimeWindowRange,
+} from "../timeWindow";
 
 interface ChartData {
   time: string;
@@ -23,10 +30,7 @@ interface ChartData {
 
 const toChartData = (points: HistoricalDataPoint[]): ChartData[] =>
   points.map((p) => ({
-    time: new Date(p.timestamp).toLocaleTimeString("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
+    time: formatTimeWithSeconds(p.timestamp),
     value: p.value,
   }));
 
@@ -89,17 +93,22 @@ const ProfilesTab: React.FC = () => {
   const [loadData, setLoadData] = useState<ChartData[]>([]);
   const [marketData, setMarketData] = useState<ChartData[]>([]);
   const [error, setError] = useState("");
+  const [windowMinutes, setWindowMinutes] = useState<number>(
+    DEFAULT_TIME_WINDOW_MINUTES,
+  );
 
   const loadAll = useCallback(async () => {
     try {
       const solarIds = await fetchSourceIDs("solar");
+      const { startIso, endIso } = getTimeWindowRange(windowMinutes);
+      const top = getPointLimitForWindow(windowMinutes);
 
       const firstSolarId = solarIds.length > 0 ? solarIds[0] : undefined;
 
       const [solar, load, market] = await Promise.all([
-        fetchHistoricalData("solar", firstSolarId, undefined, undefined, 100),
-        fetchHistoricalData("load", undefined, undefined, undefined, 100),
-        fetchHistoricalData("market", undefined, undefined, undefined, 100),
+        fetchHistoricalData("solar", firstSolarId, startIso, endIso, top),
+        fetchHistoricalData("load", undefined, startIso, endIso, top),
+        fetchHistoricalData("market", undefined, startIso, endIso, top),
       ]);
 
       setSolarData(toChartData(solar));
@@ -111,11 +120,11 @@ const ProfilesTab: React.FC = () => {
         "Could not load profile data. Ensure the backend is running and data has been initialized.",
       );
     }
-  }, []);
+  }, [windowMinutes]);
 
   useEffect(() => {
     loadAll();
-    const interval = setInterval(loadAll, 30000);
+    const interval = setInterval(loadAll, 5000);
     return () => clearInterval(interval);
   }, [loadAll]);
 
@@ -130,6 +139,10 @@ const ProfilesTab: React.FC = () => {
           {error}
         </Alert>
       )}
+
+      <Box sx={{ mb: 2 }}>
+        <TimeWindowSelect value={windowMinutes} onChange={setWindowMinutes} />
+      </Box>
 
       <Grid container spacing={2}>
         <Grid item xs={12} md={4}>

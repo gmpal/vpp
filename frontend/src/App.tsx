@@ -5,7 +5,6 @@ import Sidebar from "./components/Sidebar";
 import ProtectedRoute from "./components/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
 import Map3D from "./components/Map3D";
-import Renewables from "./Renewables";
 import Grid from "./Grid";
 import Market from "./Market";
 import Optimization from "./Optimization";
@@ -63,14 +62,6 @@ function App() {
             element={
               <ProtectedRoute>
                 <VehiclePanel />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/renewables"
-            element={
-              <ProtectedRoute>
-                <Renewables />
               </ProtectedRoute>
             }
           />

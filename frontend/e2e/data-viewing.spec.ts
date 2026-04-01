@@ -34,51 +34,6 @@ test.beforeEach(async ({ page }) => {
   await mockAllApis(page);
 });
 
-test.describe('Renewables page', () => {
-  test('displays solar data chart when source selected', async ({ page }) => {
-    await page.route(`${API}/source-ids/solar`, (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(['src-001']) })
-    );
-    await page.route(`${API}/historical/solar*`, (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SOLAR_DATA) })
-    );
-
-    await page.goto('/renewables');
-    await expect(page.locator(RECHARTS)).toBeVisible();
-  });
-
-  test('switching source to Load hides source ID dropdown', async ({ page }) => {
-    await page.route(`${API}/historical/load*`, (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(LOAD_DATA) })
-    );
-
-    await page.goto('/renewables');
-    await page.getByLabel('Select Source', { exact: true }).click();
-    await page.getByRole('option', { name: 'Load' }).click();
-
-    await expect(page.getByLabel('Select Source ID')).not.toBeVisible();
-  });
-
-  test('changing top N refetches data', async ({ page }) => {
-    let requestedTopN: string | null = null;
-    await page.route(`${API}/historical/load*`, (route) => {
-      const url = new URL(route.request().url());
-      requestedTopN = url.searchParams.get('top');
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(LOAD_DATA) });
-    });
-
-    await page.goto('/renewables');
-    await page.getByLabel('Select Source', { exact: true }).click();
-    await page.getByRole('option', { name: 'Load' }).click();
-
-    await page.getByLabel('Select Top N').click();
-    await page.getByRole('option', { name: '200' }).click();
-
-    await page.waitForTimeout(500);
-    expect(requestedTopN).toBe('200');
-  });
-});
-
 test.describe('Grid page', () => {
   test('displays load and market charts', async ({ page }) => {
     await page.route(`${API}/historical/load*`, (route) =>

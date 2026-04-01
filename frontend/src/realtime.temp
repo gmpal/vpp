@@ -1,7 +1,7 @@
 
             {/* Real-Time Box */}
             <Box my={4}>
-               
+
 
                 <Typography variant="h2" component="h1" gutterBottom align="center">
                     Real-Time Data Plot

@@ -8,7 +8,7 @@ on:
     branches:
       - main
   schedule:
-    - cron: "0 8 * * 1"  # Every Monday at 08:00 UTC
+    - cron: "0 8 * * 1" # Every Monday at 08:00 UTC
 
 jobs:
   python-audit:

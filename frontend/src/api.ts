@@ -49,6 +49,20 @@ export interface DeviceCounts {
   wind: number;
 }
 
+export interface CommunitySummary {
+  total_production: number;
+  total_consumption: number;
+  net: number;
+  ev_soc_total: number;
+  ev_soc_capacity: number;
+  battery_soc_total: number;
+  battery_soc_capacity: number;
+  action: string;
+  household_count: number;
+  ev_count: number;
+  battery_count: number;
+}
+
 export interface EnergySource {
   source_id: string;
   source_type: "solar" | "wind";
@@ -89,6 +103,18 @@ export interface HouseholdData {
   building_type: string;
   num_people: number;
   num_evs: number;
+  osm_feature_id?: string | null;
+  geometry?: GeoJSON.Geometry | null;
+}
+
+export interface UpdateHouseholdRequest {
+  name?: string;
+  latitude?: number;
+  longitude?: number;
+  solar_panels?: number;
+  building_type?: string;
+  num_people?: number;
+  num_evs?: number;
   osm_feature_id?: string | null;
   geometry?: GeoJSON.Geometry | null;
 }
@@ -183,6 +209,81 @@ export async function fetchRealTimeData(
     { params },
   );
   return response.data;
+}
+
+export interface StreamRealTimeDataOptions {
+  source_id?: string;
+  since?: string | null;
+  signal?: AbortSignal;
+  onPoint: (point: RealTimeDataPoint) => void;
+}
+
+export async function streamRealTimeData(
+  source: string,
+  options: StreamRealTimeDataOptions,
+): Promise<void> {
+  const { source_id, since, signal, onPoint } = options;
+  const token = localStorage.getItem("vpp_token");
+
+  const params = new URLSearchParams();
+  if (source_id && source !== "market" && source !== "load") {
+    params.set("source_id", source_id);
+  }
+  if (since) {
+    params.set("since", since);
+  }
+
+  const query = params.toString();
+  const url = `${API_BASE_URL}/stream-data/${source}${query ? `?${query}` : ""}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "text/event-stream",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Stream request failed (${response.status})`);
+  }
+  if (!response.body) {
+    throw new Error("Streaming response has no body");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = events.pop() ?? "";
+
+    for (const eventBlock of events) {
+      const dataLines = eventBlock
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.replace(/^data:\s?/, ""));
+
+      if (dataLines.length === 0) {
+        continue;
+      }
+
+      const payload = dataLines.join("\n");
+      try {
+        onPoint(JSON.parse(payload) as RealTimeDataPoint);
+      } catch {
+        // Ignore malformed SSE payloads.
+      }
+    }
+  }
 }
 
 export async function fetchHistoricalData(
@@ -308,6 +409,11 @@ export const createHousehold = (data: {
 export const deleteHousehold = (householdId: string) =>
   api.delete(`/households/${householdId}`).then((r) => r.data);
 
+export const updateHousehold = (
+  householdId: string,
+  data: UpdateHouseholdRequest,
+) => api.patch<HouseholdData>(`/households/${householdId}`, data).then((r) => r.data);
+
 export const getHouseholdSummary = (householdId: string) =>
   api.get<any>(`/households/${householdId}/summary`).then((r) => r.data);
 
@@ -365,7 +471,7 @@ export const dischargeVehicle = (
 ////////////////////////////////////////
 
 export const getCommunitySummary = () =>
-  api.get<any>("/community/summary").then((r) => r.data);
+  api.get<CommunitySummary>("/community/summary").then((r) => r.data);
 
 ////////////////////////////////////////
 // Weather

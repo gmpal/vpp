@@ -20,12 +20,20 @@ import BoltIcon from "@mui/icons-material/Bolt";
 import WbSunnyIcon from "@mui/icons-material/WbSunny";
 import HomeIcon from "@mui/icons-material/Home";
 import ElectricCarIcon from "@mui/icons-material/ElectricCar";
+import BatteryChargingFullIcon from "@mui/icons-material/BatteryChargingFull";
 import {
   getCommunitySummary,
   fetchHistoricalData,
   fetchSourceIDs,
   HistoricalDataPoint,
 } from "../api";
+import TimeWindowSelect from "./TimeWindowSelect";
+import {
+  DEFAULT_TIME_WINDOW_MINUTES,
+  formatTimeWithSeconds,
+  getPointLimitForWindow,
+  getTimeWindowRange,
+} from "../timeWindow";
 
 const ACTION_LABELS: Record<
   string,
@@ -82,10 +90,7 @@ const StatCard: React.FC<{
 
 function formatTimestamp(ts: string): string {
   try {
-    return new Date(ts).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatTimeWithSeconds(ts);
   } catch {
     return ts;
   }
@@ -101,6 +106,9 @@ const CommunityDashboard: React.FC = () => {
   const [solarData, setSolarData] = useState<ChartDataPoint[]>([]);
   const [loadData, setLoadData] = useState<ChartDataPoint[]>([]);
   const [error, setError] = useState("");
+  const [windowMinutes, setWindowMinutes] = useState<number>(
+    DEFAULT_TIME_WINDOW_MINUTES,
+  );
 
   const fetchSummary = async () => {
     try {
@@ -114,15 +122,17 @@ const CommunityDashboard: React.FC = () => {
   const fetchProfiles = async () => {
     try {
       const solarIds = await fetchSourceIDs("solar");
+      const { startIso, endIso } = getTimeWindowRange(windowMinutes);
+      const top = getPointLimitForWindow(windowMinutes);
 
       const firstSolarId =
         solarIds && solarIds.length > 0 ? solarIds[0] : undefined;
 
       const [solarRaw, loadRaw] = await Promise.all([
         firstSolarId
-          ? fetchHistoricalData("solar", firstSolarId, undefined, undefined, 50)
+          ? fetchHistoricalData("solar", firstSolarId, startIso, endIso, top)
           : Promise.resolve([] as HistoricalDataPoint[]),
-        fetchHistoricalData("load", undefined, undefined, undefined, 50),
+        fetchHistoricalData("load", undefined, startIso, endIso, top),
       ]);
 
       setSolarData(
@@ -146,12 +156,12 @@ const CommunityDashboard: React.FC = () => {
     fetchSummary();
     fetchProfiles();
     const summaryInterval = setInterval(fetchSummary, 30000);
-    const profileInterval = setInterval(fetchProfiles, 30000);
+    const profileInterval = setInterval(fetchProfiles, 5000);
     return () => {
       clearInterval(summaryInterval);
       clearInterval(profileInterval);
     };
-  }, []);
+  }, [windowMinutes]);
 
   const actionInfo = summary
     ? ACTION_LABELS[summary.action] ?? ACTION_LABELS.self_sufficient
@@ -243,29 +253,45 @@ const CommunityDashboard: React.FC = () => {
             color="#2196f3"
           />
         </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Energy Storage"
+            value={
+              summary
+                ? `${(summary.ev_soc_total + summary.battery_soc_total).toFixed(1)} kWh`
+                : "—"
+            }
+            icon={<BatteryChargingFullIcon sx={{ fontSize: 32 }} />}
+            color="#1e88e5"
+          />
+        </Grid>
       </Grid>
 
-      {summary && summary.ev_count > 0 && (
+      {summary && (summary.ev_count > 0 || summary.battery_count > 0) && (
         <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
           <Typography variant="subtitle2" gutterBottom>
-            Fleet EV State of Charge
+            Total Storage State of Charge
           </Typography>
           <LinearProgress
             variant="determinate"
             value={
-              summary.ev_soc_capacity > 0
-                ? (summary.ev_soc_total / summary.ev_soc_capacity) * 100
+              summary.ev_soc_capacity + summary.battery_soc_capacity > 0
+                ?
+                    ((summary.ev_soc_total + summary.battery_soc_total) /
+                      (summary.ev_soc_capacity + summary.battery_soc_capacity)) *
+                    100
                 : 0
             }
             sx={{ height: 12, borderRadius: 6 }}
             color="primary"
           />
           <Typography variant="caption" color="text.secondary">
-            {summary.ev_soc_total.toFixed(1)} /{" "}
-            {summary.ev_soc_capacity.toFixed(1)} kWh (
-            {summary.ev_soc_capacity > 0
+            {(summary.ev_soc_total + summary.battery_soc_total).toFixed(1)} /{" "}
+            {(summary.ev_soc_capacity + summary.battery_soc_capacity).toFixed(1)} kWh (
+            {summary.ev_soc_capacity + summary.battery_soc_capacity > 0
               ? (
-                  (summary.ev_soc_total / summary.ev_soc_capacity) *
+                  ((summary.ev_soc_total + summary.battery_soc_total) /
+                    (summary.ev_soc_capacity + summary.battery_soc_capacity)) *
                   100
                 ).toFixed(0)
               : 0}
@@ -276,8 +302,12 @@ const CommunityDashboard: React.FC = () => {
 
       <Paper sx={{ p: 2, borderRadius: 2 }}>
         <Typography variant="subtitle2" gutterBottom>
-          Historical Power Profiles (last 50 points)
+          Historical Power Profiles
         </Typography>
+
+        <Box sx={{ mb: 1.5 }}>
+          <TimeWindowSelect value={windowMinutes} onChange={setWindowMinutes} />
+        </Box>
 
         <Typography
           variant="caption"

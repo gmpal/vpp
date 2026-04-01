@@ -21,11 +21,6 @@ test.describe('Page rendering', () => {
     await expect(page.getByRole('heading', { name: 'Vehicles', exact: true })).toBeVisible();
   });
 
-  test('Renewables page renders', async ({ page }) => {
-    await page.goto('/renewables');
-    await expect(page.getByRole('heading', { name: /renewable/i })).toBeVisible();
-  });
-
   test('Grid page renders', async ({ page }) => {
     await page.goto('/grid');
     await expect(page.locator('main').getByRole('heading', { name: 'Grid' })).toBeVisible();

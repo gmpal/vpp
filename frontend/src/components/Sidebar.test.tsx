@@ -22,9 +22,9 @@ describe("Sidebar", () => {
     expect(screen.getByText("Community")).toBeInTheDocument();
     expect(screen.getByText("Households")).toBeInTheDocument();
     expect(screen.getByText("Vehicles")).toBeInTheDocument();
-    expect(screen.getByText("Renewables")).toBeInTheDocument();
     expect(screen.getByText("Grid")).toBeInTheDocument();
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Profiles")).toBeInTheDocument();
+    expect(screen.getByText("Forecast")).toBeInTheDocument();
   });
 
   it("marks the active item as selected when on / route", () => {
@@ -64,8 +64,8 @@ describe("Sidebar", () => {
     expect(hrefs).toContain("/community");
     expect(hrefs).toContain("/households");
     expect(hrefs).toContain("/vehicles");
-    expect(hrefs).toContain("/renewables");
     expect(hrefs).toContain("/grid");
-    expect(hrefs).toContain("/dashboard");
+    expect(hrefs).toContain("/profiles");
+    expect(hrefs).toContain("/forecast");
   });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Box, Typography, Paper } from "@mui/material";
 import {
   LineChart,
@@ -11,44 +11,49 @@ import {
   Legend,
 } from "recharts";
 import { fetchHistoricalData, HistoricalDataPoint } from "./api.ts";
-
-function formatTime(timestamp: string): string {
-  const d = new Date(timestamp);
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
+import TimeWindowSelect from "./components/TimeWindowSelect";
+import {
+  DEFAULT_TIME_WINDOW_MINUTES,
+  formatTimeWithSeconds,
+  getPointLimitForWindow,
+  getTimeWindowRange,
+} from "./timeWindow";
 
 const Grid: React.FC = () => {
   const [loadData, setLoadData] = useState<HistoricalDataPoint[]>([]);
   const [marketData, setMarketData] = useState<HistoricalDataPoint[]>([]);
+  const [windowMinutes, setWindowMinutes] = useState<number>(
+    DEFAULT_TIME_WINDOW_MINUTES,
+  );
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    const { startIso, endIso } = getTimeWindowRange(windowMinutes);
+    const top = getPointLimitForWindow(windowMinutes);
     try {
       const [load, market] = await Promise.all([
-        fetchHistoricalData("load", undefined, undefined, undefined, 100),
-        fetchHistoricalData("market", undefined, undefined, undefined, 100),
+        fetchHistoricalData("load", undefined, startIso, endIso, top),
+        fetchHistoricalData("market", undefined, startIso, endIso, top),
       ]);
       setLoadData(load);
       setMarketData(market);
     } catch (err) {
       console.error("Error fetching grid data:", err);
     }
-  };
+  }, [windowMinutes]);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchData]);
 
   const loadChartData = loadData.map((p) => ({
-    time: formatTime(p.timestamp),
+    time: formatTimeWithSeconds(p.timestamp),
     value: p.value,
   }));
 
   const marketChartData = marketData.map((p) => ({
-    time: formatTime(p.timestamp),
+    time: formatTimeWithSeconds(p.timestamp),
     value: p.value,
   }));
 
@@ -57,6 +62,10 @@ const Grid: React.FC = () => {
       <Typography variant="h5" fontWeight="bold" mb={3}>
         Grid
       </Typography>
+
+      <Box sx={{ mb: 2 }}>
+        <TimeWindowSelect value={windowMinutes} onChange={setWindowMinutes} />
+      </Box>
 
       <Paper elevation={3} sx={{ p: 2, mb: 3, borderRadius: 2 }}>
         <Typography variant="subtitle1" fontWeight="bold" gutterBottom>

@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from backend.api.main import app
+from backend.api.auth import get_current_user
 from backend.src.dependencies import get_crud_manager
 
 
@@ -13,6 +14,7 @@ def mock_crud():
 @pytest.fixture
 def client(mock_crud):
     app.dependency_overrides[get_crud_manager] = lambda: mock_crud
+    app.dependency_overrides[get_current_user] = lambda: {"user_id": "usr_test"}
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -22,12 +24,17 @@ def test_list_households_empty(client, mock_crud):
     response = client.get("/api/households")
     assert response.status_code == 200
     assert response.json() == []
-    mock_crud.get_all_households.assert_called_once()
+    mock_crud.get_all_households.assert_called_once_with(user_id="usr_test")
 
 
 def test_list_households_with_data(client, mock_crud):
     mock_crud.get_all_households.return_value = [
-        {"household_id": "hh_1", "name": "House A", "latitude": 50.85, "longitude": 4.35},
+        {
+            "household_id": "hh_1",
+            "name": "House A",
+            "latitude": 50.85,
+            "longitude": 4.35,
+        },
         {"household_id": "hh_2", "name": "House B", "latitude": 51.0, "longitude": 4.5},
     ]
     response = client.get("/api/households")
@@ -84,7 +91,10 @@ def test_get_household_not_found(client, mock_crud):
 
 def test_delete_household_found(client, mock_crud):
     mock_crud.get_household.return_value = {
-        "household_id": "hh_1", "name": "H1", "latitude": 50.0, "longitude": 4.0,
+        "household_id": "hh_1",
+        "name": "H1",
+        "latitude": 50.0,
+        "longitude": 4.0,
     }
     response = client.delete("/api/households/hh_1")
     assert response.status_code == 200
@@ -98,9 +108,55 @@ def test_delete_household_not_found(client, mock_crud):
     mock_crud.delete_household.assert_not_called()
 
 
+def test_update_household_found(client, mock_crud):
+    mock_crud.get_household.side_effect = [
+        {
+            "household_id": "hh_1",
+            "name": "House A",
+            "latitude": 50.85,
+            "longitude": 4.35,
+            "solar_panels": 4,
+            "building_type": "household",
+            "num_people": 3,
+            "num_evs": 1,
+            "osm_feature_id": None,
+            "geometry": None,
+        },
+        {
+            "household_id": "hh_1",
+            "name": "House A",
+            "latitude": 50.85,
+            "longitude": 4.35,
+            "solar_panels": 6,
+            "building_type": "household",
+            "num_people": 3,
+            "num_evs": 1,
+            "osm_feature_id": None,
+            "geometry": None,
+        },
+    ]
+
+    response = client.patch("/api/households/hh_1", json={"solar_panels": 6})
+    assert response.status_code == 200
+    assert response.json()["solar_panels"] == 6
+    mock_crud.update_household.assert_called_once_with(
+        "hh_1", user_id="usr_test", solar_panels=6
+    )
+
+
+def test_update_household_not_found(client, mock_crud):
+    mock_crud.get_household.return_value = None
+    response = client.patch("/api/households/hh_missing", json={"solar_panels": 2})
+    assert response.status_code == 404
+    mock_crud.update_household.assert_not_called()
+
+
 def test_household_summary_with_evs(client, mock_crud):
     mock_crud.get_household.return_value = {
-        "household_id": "hh_1", "name": "H1", "latitude": 50.0, "longitude": 4.0,
+        "household_id": "hh_1",
+        "name": "H1",
+        "latitude": 50.0,
+        "longitude": 4.0,
     }
     mock_crud.get_evs_by_household.return_value = [
         {"soc_kwh": 30.0, "capacity_kwh": 75.0},
@@ -118,7 +174,10 @@ def test_household_summary_with_evs(client, mock_crud):
 
 def test_household_summary_no_evs(client, mock_crud):
     mock_crud.get_household.return_value = {
-        "household_id": "hh_1", "name": "H1", "latitude": 50.0, "longitude": 4.0,
+        "household_id": "hh_1",
+        "name": "H1",
+        "latitude": 50.0,
+        "longitude": 4.0,
     }
     mock_crud.get_evs_by_household.return_value = []
     response = client.get("/api/households/hh_1/summary")

@@ -11,10 +11,12 @@ class CrudManager:
     VALID_TABLES = {
         # Historical data tables
         "solar",
+        "wind",
         "load",
         "market",
         # Forecast tables
         "solar_forecast",
+        "wind_forecast",
         "load_forecast",
         "market_forecast",
     }
@@ -33,9 +35,13 @@ class CrudManager:
             InvalidTableNameError: If table name is not in whitelist
         """
         if table not in self.VALID_TABLES:
-            raise InvalidTableNameError(f"Invalid table name: {table}. Must be one of {self.VALID_TABLES}")
+            raise InvalidTableNameError(
+                f"Invalid table name: {table}. Must be one of {self.VALID_TABLES}"
+            )
 
-    def save_to_db(self, table: str, timestamp: datetime, source_id: str | None, value: float):
+    def save_to_db(
+        self, table: str, timestamp: datetime, source_id: str | None, value: float
+    ):
         self._validate_table_name(table)
         if table in self.db.renewables:
             query = f"INSERT INTO {table} (time, source_id, value) VALUES (%s, %s, %s)"
@@ -69,7 +75,9 @@ class CrudManager:
 
     def save_household_load(self, household_id: str, load_series: pd.Series):
         """Bulk-insert a load time series into household_load."""
-        query = "INSERT INTO household_load (time, household_id, value) VALUES (%s, %s, %s)"
+        query = (
+            "INSERT INTO household_load (time, household_id, value) VALUES (%s, %s, %s)"
+        )
         rows = [(ts, household_id, float(v)) for ts, v in load_series.items()]
         with self.db.connect() as conn, conn.cursor() as cursor:
             cursor.executemany(query, rows)
@@ -77,7 +85,8 @@ class CrudManager:
 
     def rebuild_aggregated_load(self):
         """Rebuild the load table as a time-bucketed aggregate of all household_load records.
-        Called after any household is created or deleted so the load table stays in sync."""
+        Called after any household is created or deleted so the load table stays in sync.
+        """
         self.db.execute("DELETE FROM load")
         self.db.execute("""
             INSERT INTO load (time, value)
@@ -116,16 +125,108 @@ class CrudManager:
         # This format is perfect for FastAPI to automatically convert to JSON.
         return [{"time": row[0], "value": row[1]} for row in rows]
 
-    def save_forecast(self, table: str, source_id: str | None, forecasted_df: pd.DataFrame):
+    def load_user_historical_data(
+        self,
+        table: str,
+        user_id: str,
+        source_id: str | None = None,
+        start: str = None,
+        end: str = None,
+        top: int = None,
+    ):
+        """Load historical data scoped to a single user.
+
+        - `solar`/`wind`: rows are filtered by the user's registered energy sources.
+        - `load`: returned as an aggregate of the user's household_load values by timestamp.
+        - `market`: global market series is returned unchanged.
+        """
+        self._validate_table_name(table)
+
+        params = []
+        where_clauses = []
+
+        if table in ("solar", "wind"):
+            base_query = f"""
+            SELECT t.time, t.value
+            FROM {table} t
+            JOIN energy_sources es ON t.source_id = es.source_id
+            WHERE es.user_id = %s
+            """
+            params.append(user_id)
+
+            if source_id:
+                where_clauses.append("t.source_id = %s")
+                params.append(source_id)
+            if start:
+                where_clauses.append("t.time >= %s")
+                params.append(start)
+            if end:
+                where_clauses.append("t.time <= %s")
+                params.append(end)
+
+            if where_clauses:
+                base_query += " AND " + " AND ".join(where_clauses)
+
+            query = base_query + " ORDER BY t.time"
+
+        elif table == "load":
+            base_query = """
+            SELECT hl.time, SUM(hl.value) AS value
+            FROM household_load hl
+            JOIN households hh ON hl.household_id = hh.household_id
+            WHERE hh.user_id = %s
+            """
+            params.append(user_id)
+
+            if start:
+                where_clauses.append("hl.time >= %s")
+                params.append(start)
+            if end:
+                where_clauses.append("hl.time <= %s")
+                params.append(end)
+
+            if where_clauses:
+                base_query += " AND " + " AND ".join(where_clauses)
+
+            query = base_query + " GROUP BY hl.time ORDER BY hl.time"
+
+        else:
+            # Market and any future non-user-specific tables follow existing behavior.
+            if source_id:
+                where_clauses.append("source_id = %s")
+                params.append(source_id)
+            if start:
+                where_clauses.append("time >= %s")
+                params.append(start)
+            if end:
+                where_clauses.append("time <= %s")
+                params.append(end)
+
+            where = " AND ".join(where_clauses) if where_clauses else ""
+            query = f"SELECT time, value FROM {table} {'WHERE ' + where if where else ''} ORDER BY time"
+
+        if top:
+            query += f" LIMIT {top}"
+
+        rows = self.db.execute(query, params, fetch=True) or []
+        return [{"time": row[0], "value": row[1]} for row in rows]
+
+    def save_forecast(
+        self, table: str, source_id: str | None, forecasted_df: pd.DataFrame
+    ):
         # Validate base table name (table_name will be constructed)
         if table not in ["solar", "load", "market"]:
-            raise InvalidTableNameError(f"Invalid forecast table base: {table}. Must be one of solar, load, market")
+            raise InvalidTableNameError(
+                f"Invalid forecast table base: {table}. Must be one of solar, load, market"
+            )
         table_name = f"{table}_forecast"
         self._validate_table_name(table_name)
         columns = ["time"] + (["source_id"] if source_id else []) + ["yhat"]
         query = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})"
         for time, row in forecasted_df.iterrows():
-            values = [time] + ([source_id] if source_id else []) + [float(row["value"])]  # Convert to float
+            values = (
+                [time] + ([source_id] if source_id else []) + [float(row["value"])]
+            )  # Convert to float
             self.db.execute(query, values)
 
     def load_forecasted_data(
@@ -153,7 +254,9 @@ class CrudManager:
         """
         # Validate type parameter
         if type not in ["solar", "load", "market"]:
-            raise InvalidTableNameError(f"Invalid forecast type: {type}. Must be one of solar, load, market")
+            raise InvalidTableNameError(
+                f"Invalid forecast type: {type}. Must be one of solar, load, market"
+            )
         table = f"{type}_forecast"
         self._validate_table_name(table)
 
@@ -233,8 +336,16 @@ class CrudManager:
         self.db.execute(
             query,
             (
-                household_id, name, latitude, longitude, solar_panels,
-                building_type, num_people, num_evs, osm_feature_id, user_id,
+                household_id,
+                name,
+                latitude,
+                longitude,
+                solar_panels,
+                building_type,
+                num_people,
+                num_evs,
+                osm_feature_id,
+                user_id,
                 json.dumps(geometry) if geometry else None,
             ),
         )
@@ -261,7 +372,9 @@ class CrudManager:
             return None
         return self._household_row_to_dict(rows[0])
 
-    def get_household_by_osm_id(self, osm_feature_id: str, user_id: str = None) -> dict | None:
+    def get_household_by_osm_id(
+        self, osm_feature_id: str, user_id: str = None
+    ) -> dict | None:
         if user_id:
             query = """SELECT household_id, name, latitude, longitude,
                               solar_panels, building_type, num_people, num_evs, osm_feature_id, geometry
@@ -295,7 +408,44 @@ class CrudManager:
         }
 
     def delete_household(self, household_id: str):
-        self.db.execute("DELETE FROM households WHERE household_id = %s", (household_id,))
+        self.db.execute(
+            "DELETE FROM households WHERE household_id = %s", (household_id,)
+        )
+
+    def update_household(self, household_id: str, user_id: str = None, **kwargs):
+        import json
+
+        allowed_fields = {
+            "name",
+            "latitude",
+            "longitude",
+            "solar_panels",
+            "building_type",
+            "num_people",
+            "num_evs",
+            "osm_feature_id",
+            "geometry",
+        }
+        updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        if not updates:
+            return
+
+        if "geometry" in updates:
+            updates["geometry"] = (
+                json.dumps(updates["geometry"])
+                if updates["geometry"] is not None
+                else None
+            )
+
+        set_clause = ", ".join(f"{field} = %s" for field in updates.keys())
+        params = list(updates.values()) + [household_id]
+        query = f"UPDATE households SET {set_clause} WHERE household_id = %s"
+
+        if user_id is not None:
+            query += " AND user_id = %s"
+            params.append(user_id)
+
+        self.db.execute(query, tuple(params))
 
     # --- EV CRUD ---
     def create_ev(
@@ -315,7 +465,20 @@ class CrudManager:
         (vehicle_id, household_id, name, capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta, status)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
-        self.db.execute(query, (vehicle_id, household_id, name, capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta, status))
+        self.db.execute(
+            query,
+            (
+                vehicle_id,
+                household_id,
+                name,
+                capacity_kwh,
+                soc_kwh,
+                max_charge_kw,
+                max_discharge_kw,
+                eta,
+                status,
+            ),
+        )
 
     def get_all_evs(self, user_id: str) -> list:
         query = """
@@ -351,18 +514,33 @@ class CrudManager:
         return self._ev_row_to_dict(rows[0])
 
     def update_ev_soc(self, vehicle_id: str, new_soc: float):
-        self.db.execute("UPDATE electric_vehicles SET soc_kwh = %s WHERE vehicle_id = %s", (new_soc, vehicle_id))
+        self.db.execute(
+            "UPDATE electric_vehicles SET soc_kwh = %s WHERE vehicle_id = %s",
+            (new_soc, vehicle_id),
+        )
 
-    def update_ev_status(self, vehicle_id: str, status: str, latitude: float = None, longitude: float = None):
+    def update_ev_status(
+        self,
+        vehicle_id: str,
+        status: str,
+        latitude: float = None,
+        longitude: float = None,
+    ):
         if latitude is not None and longitude is not None:
             self.db.execute(
-                "UPDATE electric_vehicles SET status = %s, latitude = %s, longitude = %s WHERE vehicle_id = %s", (status, latitude, longitude, vehicle_id)
+                "UPDATE electric_vehicles SET status = %s, latitude = %s, longitude = %s WHERE vehicle_id = %s",
+                (status, latitude, longitude, vehicle_id),
             )
         else:
-            self.db.execute("UPDATE electric_vehicles SET status = %s WHERE vehicle_id = %s", (status, vehicle_id))
+            self.db.execute(
+                "UPDATE electric_vehicles SET status = %s WHERE vehicle_id = %s",
+                (status, vehicle_id),
+            )
 
     def delete_ev(self, vehicle_id: str):
-        self.db.execute("DELETE FROM electric_vehicles WHERE vehicle_id = %s", (vehicle_id,))
+        self.db.execute(
+            "DELETE FROM electric_vehicles WHERE vehicle_id = %s", (vehicle_id,)
+        )
 
     def _ev_row_to_dict(self, r) -> dict:
         return {
@@ -377,6 +555,107 @@ class CrudManager:
             "status": r[8],
             "latitude": r[9],
             "longitude": r[10],
+        }
+
+    # ---- Battery CRUD ----
+
+    def create_battery(
+        self,
+        battery_id: str,
+        household_id: str,
+        name: str,
+        capacity_kwh: float,
+        soc_kwh: float,
+        max_charge_kw: float,
+        max_discharge_kw: float,
+        eta: float = 0.95,
+    ):
+        query = """
+        INSERT INTO batteries
+        (battery_id, household_id, name, capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        self.db.execute(
+            query,
+            (battery_id, household_id, name, capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta),
+        )
+
+    def get_all_batteries(self, user_id: str) -> list:
+        query = """
+        SELECT b.battery_id, b.household_id, b.name, b.capacity_kwh, b.soc_kwh,
+               b.max_charge_kw, b.max_discharge_kw, b.eta
+        FROM batteries b
+        JOIN households hh ON b.household_id = hh.household_id
+        WHERE hh.user_id = %s
+        ORDER BY b.created_at DESC
+        """
+        rows = self.db.execute(query, (user_id,), fetch=True) or []
+        return [self._battery_row_to_dict(r) for r in rows]
+
+    def get_batteries_by_household(self, household_id: str) -> list:
+        query = """
+        SELECT battery_id, household_id, name, capacity_kwh, soc_kwh,
+               max_charge_kw, max_discharge_kw, eta
+        FROM batteries WHERE household_id = %s ORDER BY created_at DESC
+        """
+        rows = self.db.execute(query, (household_id,), fetch=True) or []
+        return [self._battery_row_to_dict(r) for r in rows]
+
+    def get_battery(self, battery_id: str) -> dict | None:
+        query = """
+        SELECT battery_id, household_id, name, capacity_kwh, soc_kwh,
+               max_charge_kw, max_discharge_kw, eta
+        FROM batteries WHERE battery_id = %s
+        """
+        rows = self.db.execute(query, (battery_id,), fetch=True) or []
+        if not rows:
+            return None
+        return self._battery_row_to_dict(rows[0])
+
+    def get_home_batteries(self, user_id: str) -> list:
+        """Return all batteries for a user (batteries are always 'home')."""
+        query = """
+        SELECT b.battery_id, b.capacity_kwh, b.soc_kwh,
+               b.max_charge_kw, b.max_discharge_kw, b.eta
+        FROM batteries b
+        JOIN households hh ON b.household_id = hh.household_id
+        WHERE hh.user_id = %s
+        ORDER BY b.battery_id
+        """
+        rows = self.db.execute(query, (user_id,), fetch=True) or []
+        return [
+            {
+                "vehicle_id": r[0],  # reuse vehicle_id key for optimizer compatibility
+                "capacity_kwh": r[1],
+                "soc_kwh": r[2],
+                "max_charge_kw": r[3],
+                "max_discharge_kw": r[4],
+                "eta": r[5],
+            }
+            for r in rows
+        ]
+
+    def update_battery_soc(self, battery_id: str, new_soc: float):
+        self.db.execute(
+            "UPDATE batteries SET soc_kwh = %s WHERE battery_id = %s",
+            (new_soc, battery_id),
+        )
+
+    def delete_battery(self, battery_id: str):
+        self.db.execute(
+            "DELETE FROM batteries WHERE battery_id = %s", (battery_id,)
+        )
+
+    def _battery_row_to_dict(self, r) -> dict:
+        return {
+            "battery_id": r[0],
+            "household_id": r[1],
+            "name": r[2],
+            "capacity_kwh": r[3],
+            "soc_kwh": r[4],
+            "max_charge_kw": r[5],
+            "max_discharge_kw": r[6],
+            "eta": r[7],
         }
 
     def get_community_summary(self, user_id: str) -> dict:
@@ -395,7 +674,32 @@ class CrudManager:
         solar_rows = self.db.execute(solar_query, (user_id,), fetch=True) or [(0,)]
         total_solar = float(solar_rows[0][0])
 
-        total_production = total_solar
+        # Latest wind production sum — scoped to user's sources
+        wind_query = """
+        SELECT COALESCE(SUM(latest.value), 0)
+        FROM (
+            SELECT DISTINCT ON (w.source_id) w.value
+            FROM wind w
+            JOIN energy_sources es ON w.source_id = es.source_id
+            WHERE es.user_id = %s
+            ORDER BY w.source_id, w.time DESC
+        ) latest
+        """
+        wind_rows = self.db.execute(wind_query, (user_id,), fetch=True) or [(0,)]
+        total_wind = float(wind_rows[0][0])
+
+        # Rooftop production estimate from building panel count.
+        # This keeps community production responsive when users add buildings with panels.
+        rooftop_query = """
+        SELECT COALESCE(SUM(GREATEST(solar_panels, 0)), 0)
+        FROM households
+        WHERE user_id = %s
+        """
+        rooftop_rows = self.db.execute(rooftop_query, (user_id,), fetch=True) or [(0,)]
+        total_panels = float(rooftop_rows[0][0])
+        estimated_rooftop_kw = total_panels * 0.35
+
+        total_production = total_solar + total_wind + estimated_rooftop_kw
 
         # Latest load — sum of each household's most recent value, scoped to this user
         load_query = """
@@ -423,15 +727,31 @@ class CrudManager:
         ev_soc_capacity = float(ev_rows[0][1])
         ev_count = int(ev_rows[0][2])
 
+        # Battery SOC aggregation — scoped to user's households
+        battery_query = """
+        SELECT COALESCE(SUM(b.soc_kwh), 0), COALESCE(SUM(b.capacity_kwh), 0), COUNT(*)
+        FROM batteries b
+        JOIN households hh ON b.household_id = hh.household_id
+        WHERE hh.user_id = %s
+        """
+        bat_rows = self.db.execute(battery_query, (user_id,), fetch=True) or [(0, 0, 0)]
+        battery_soc_total = float(bat_rows[0][0])
+        battery_soc_capacity = float(bat_rows[0][1])
+        battery_count = int(bat_rows[0][2])
+
         # Household count — scoped to user
         hh_query = "SELECT COUNT(*) FROM households WHERE user_id = %s"
         hh_rows = self.db.execute(hh_query, (user_id,), fetch=True) or [(0,)]
         household_count = int(hh_rows[0][0])
 
+        total_storage_soc = ev_soc_total + battery_soc_total
+        total_storage_capacity = ev_soc_capacity + battery_soc_capacity
+        total_storage_count = ev_count + battery_count
+
         net = total_production - total_consumption
         if net > 0.1:
             action = "selling"
-        elif net < -0.1 and ev_count > 0 and ev_soc_total < ev_soc_capacity * 0.9:
+        elif net < -0.1 and total_storage_count > 0 and total_storage_soc < total_storage_capacity * 0.9:
             action = "charging_evs"
         elif net < -0.1:
             action = "buying"
@@ -444,7 +764,10 @@ class CrudManager:
             "net": net,
             "ev_soc_total": ev_soc_total,
             "ev_soc_capacity": ev_soc_capacity,
+            "battery_soc_total": battery_soc_total,
+            "battery_soc_capacity": battery_soc_capacity,
             "action": action,
             "household_count": household_count,
             "ev_count": ev_count,
+            "battery_count": battery_count,
         }

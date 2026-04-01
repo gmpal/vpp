@@ -17,7 +17,6 @@ test.describe('Sidebar navigation', () => {
     { label: 'Community', path: '/community' },
     { label: 'Households', path: '/households' },
     { label: 'Vehicles', path: '/vehicles' },
-    { label: 'Renewables', path: '/renewables' },
     { label: 'Grid', path: '/grid' },
     { label: 'Profiles', path: '/profiles' },
     { label: 'Forecast', path: '/forecast' },

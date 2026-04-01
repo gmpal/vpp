@@ -90,7 +90,7 @@ class SchemaManager:
         query = """
         CREATE TABLE energy_sources (
             source_id VARCHAR(50) PRIMARY KEY,
-            type VARCHAR(50) NOT NULL CHECK (type IN ('solar')),
+            type VARCHAR(50) NOT NULL CHECK (type IN ('solar', 'wind')),
             latitude FLOAT NOT NULL,
             longitude FLOAT NOT NULL,
             name VARCHAR(100),
@@ -146,29 +146,27 @@ class SchemaManager:
 
     def _create_renewables_tables(self):
         for renewable in self.db.renewables:
-            query = f"""
-            CREATE TABLE {renewable} (
+            self._try_create(lambda r=renewable: self.db.execute(f"""
+            CREATE TABLE {r} (
                 time        TIMESTAMPTZ NOT NULL,
                 source_id   VARCHAR(50) NOT NULL,
                 value       DOUBLE PRECISION NOT NULL CHECK (value >= 0)
             );
-            SELECT create_hypertable('{renewable}', 'time');
-            CREATE INDEX idx_{renewable}_source_time ON {renewable}(source_id, time DESC);
-            """.strip()
-            self.db.execute(query)
+            SELECT create_hypertable('{r}', 'time');
+            CREATE INDEX idx_{r}_source_time ON {r}(source_id, time DESC);
+            """.strip()))
 
     def _create_renewables_forecast_tables(self):
         for renewable in self.db.renewables:
-            query = f"""
-            CREATE TABLE {renewable}_forecast (
+            self._try_create(lambda r=renewable: self.db.execute(f"""
+            CREATE TABLE {r}_forecast (
                 time    TIMESTAMPTZ NOT NULL,
                 source_id VARCHAR(50) NOT NULL,
                 yhat    DOUBLE PRECISION NOT NULL CHECK (yhat >= 0)
             );
-            SELECT create_hypertable('{renewable}_forecast', 'time');
-            CREATE INDEX idx_{renewable}_forecast_source_time ON {renewable}_forecast(source_id, time DESC);
-            """
-            self.db.execute(query)
+            SELECT create_hypertable('{r}_forecast', 'time');
+            CREATE INDEX idx_{r}_forecast_source_time ON {r}_forecast(source_id, time DESC);
+            """))
 
     def _create_electric_vehicles_table(self):
         query = """
@@ -185,6 +183,50 @@ class SchemaManager:
             latitude FLOAT,
             longitude FLOAT,
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        self.db.execute(query)
+
+    def _create_tariffs_tables(self):
+        query = """
+        CREATE TABLE IF NOT EXISTS tariffs (
+            tariff_id   VARCHAR(50) PRIMARY KEY,
+            name        VARCHAR(100) NOT NULL,
+            tariff_type VARCHAR(20) NOT NULL CHECK (tariff_type IN ('grid_import', 'grid_export')),
+            currency    VARCHAR(3) DEFAULT 'EUR',
+            active      BOOLEAN DEFAULT false,
+            created_at  TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS tariff_periods (
+            id           SERIAL PRIMARY KEY,
+            tariff_id    VARCHAR(50) NOT NULL REFERENCES tariffs(tariff_id) ON DELETE CASCADE,
+            day_type     VARCHAR(10) NOT NULL CHECK (day_type IN ('weekday', 'weekend', 'all')),
+            hour_start   INT NOT NULL CHECK (hour_start >= 0 AND hour_start < 24),
+            hour_end     INT NOT NULL CHECK (hour_end > 0 AND hour_end <= 24),
+            price_per_kwh DOUBLE PRECISION NOT NULL,
+            UNIQUE (tariff_id, day_type, hour_start)
+        );
+
+        CREATE TABLE IF NOT EXISTS community_settings (
+            key   VARCHAR(50) PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        """
+        self.db.execute(query)
+
+    def _create_batteries_table(self):
+        query = """
+        CREATE TABLE IF NOT EXISTS batteries (
+            battery_id   VARCHAR(50) PRIMARY KEY,
+            household_id VARCHAR(50) NOT NULL REFERENCES households(household_id) ON DELETE CASCADE,
+            name         VARCHAR(100) NOT NULL,
+            capacity_kwh DOUBLE PRECISION NOT NULL CHECK (capacity_kwh > 0),
+            soc_kwh      DOUBLE PRECISION NOT NULL CHECK (soc_kwh >= 0),
+            max_charge_kw    DOUBLE PRECISION NOT NULL CHECK (max_charge_kw > 0),
+            max_discharge_kw DOUBLE PRECISION NOT NULL CHECK (max_discharge_kw > 0),
+            eta          DOUBLE PRECISION NOT NULL CHECK (eta > 0 AND eta <= 1) DEFAULT 0.95,
+            created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         );
         """
         self.db.execute(query)
@@ -217,6 +259,19 @@ class SchemaManager:
         END $$;
         """)
 
+    def _migrate_energy_sources_allow_wind(self):
+        """Update energy_sources type CHECK to allow 'wind' in addition to 'solar'."""
+        self.db.execute("""
+        DO $$
+        BEGIN
+            ALTER TABLE energy_sources DROP CONSTRAINT IF EXISTS energy_sources_type_check;
+            ALTER TABLE energy_sources ADD CONSTRAINT energy_sources_type_check
+                CHECK (type IN ('solar', 'wind'));
+        EXCEPTION WHEN undefined_table THEN
+            NULL;
+        END $$;
+        """)
+
     def _try_create(self, create_fn):
         """Run a create method, silently skip if the table already exists."""
         import psycopg2
@@ -236,13 +291,16 @@ class SchemaManager:
         self._try_create(self._create_market_forecast_table)
         self._try_create(self._create_load_table)
         self._try_create(self._create_load_forecast_table)
-        self._try_create(self._create_renewables_tables)
-        self._try_create(self._create_renewables_forecast_tables)
+        self._create_renewables_tables()  # handles per-table try_create internally
+        self._create_renewables_forecast_tables()  # handles per-table try_create internally
         self._create_electric_vehicles_table()  # already uses IF NOT EXISTS
+        self._create_batteries_table()  # already uses IF NOT EXISTS
+        self._create_tariffs_tables()  # already uses IF NOT EXISTS
         self._create_household_load_table()  # already uses IF NOT EXISTS
         self._migrate_add_user_id()  # idempotent: ADD COLUMN IF NOT EXISTS
         self._migrate_household_load_fk()  # idempotent: ADD CONSTRAINT IF NOT EXISTS
         self._migrate_add_building_geometry()  # idempotent: ADD COLUMN IF NOT EXISTS
+        self._migrate_energy_sources_allow_wind()  # idempotent: update CHECK constraint
 
     def _drop_all_tables_except_users(self):
         """Drop all tables in public schema except the users table."""
@@ -277,7 +335,13 @@ class SchemaManager:
         self._create_renewables_tables()
         self._create_renewables_forecast_tables()
         self._create_electric_vehicles_table()
+        self._create_batteries_table()
+        self._create_tariffs_tables()
         self._create_household_load_table()
+        self._migrate_add_user_id()
+        self._migrate_household_load_fk()
+        self._migrate_add_building_geometry()
+        self._migrate_energy_sources_allow_wind()
 
     def reset_forecast_tables(self):
         self._drop_forecasting_tables_in_public()

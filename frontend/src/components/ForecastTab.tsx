@@ -25,6 +25,11 @@ import {
   ForecastedDataPoint,
 } from "../api";
 import { format } from "date-fns";
+import TimeWindowSelect from "./TimeWindowSelect";
+import {
+  DEFAULT_TIME_WINDOW_MINUTES,
+  getTimeWindowRange,
+} from "../timeWindow";
 
 const SOURCE_TYPES = ["solar", "load", "market"];
 
@@ -38,7 +43,7 @@ const needsSourceId = (source: string) => source === "solar";
 
 const formatTimestamp = (ts: string): string => {
   try {
-    return format(new Date(ts), "HH:mm dd/MM");
+    return format(new Date(ts), "HH:mm:ss dd/MM");
   } catch {
     return ts;
   }
@@ -50,6 +55,9 @@ const ForecastTab: React.FC = () => {
   const [selectedSourceId, setSelectedSourceId] = useState<string>("");
   const [forecastData, setForecastData] = useState<ForecastedDataPoint[]>([]);
   const [error, setError] = useState<string>("");
+  const [windowMinutes, setWindowMinutes] = useState<number>(
+    DEFAULT_TIME_WINDOW_MINUTES,
+  );
 
   // Fetch source IDs when source type changes
   useEffect(() => {
@@ -71,6 +79,7 @@ const ForecastTab: React.FC = () => {
 
   // Fetch forecast data when source or sourceId changes
   useEffect(() => {
+    const { startIso, endIso } = getTimeWindowRange(windowMinutes);
     const sourceIdParam = needsSourceId(selectedSource)
       ? selectedSourceId
       : undefined;
@@ -78,16 +87,28 @@ const ForecastTab: React.FC = () => {
     // If source needs a source_id but none is selected yet, skip fetching
     if (needsSourceId(selectedSource) && !selectedSourceId) return;
 
-    setError("");
-    fetchForecastedData(selectedSource, sourceIdParam)
-      .then((data) => setForecastData(data))
-      .catch(() => {
+    const load = async () => {
+      setError("");
+      try {
+        const data = await fetchForecastedData(
+          selectedSource,
+          sourceIdParam,
+          startIso,
+          endIso,
+        );
+        setForecastData(data);
+      } catch {
         setForecastData([]);
         setError(
           "Failed to fetch forecast data. Check that the backend is running.",
         );
-      });
-  }, [selectedSource, selectedSourceId]);
+      }
+    };
+
+    load();
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [selectedSource, selectedSourceId, windowMinutes]);
 
   const chartData = forecastData.map((point) => ({
     timestamp: formatTimestamp(point.timestamp),
@@ -143,6 +164,8 @@ const ForecastTab: React.FC = () => {
               </Select>
             </FormControl>
           )}
+
+          <TimeWindowSelect value={windowMinutes} onChange={setWindowMinutes} />
         </Box>
       </Paper>
 

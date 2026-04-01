@@ -53,7 +53,10 @@ def login(
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return {"access_token": create_access_token(user["user_id"]), "token_type": "bearer"}
+    return {
+        "access_token": create_access_token(user["user_id"]),
+        "token_type": "bearer",
+    }
 
 
 @router.get("/auth/me", response_model=UserResponse)
