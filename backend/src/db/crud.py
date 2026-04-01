@@ -448,3 +448,478 @@ class CrudManager:
             "household_count": household_count,
             "ev_count": ev_count,
         }
+
+    # -------------------------------------------------------------------------
+    # Community CRUD
+    # -------------------------------------------------------------------------
+
+    def create_community(
+        self,
+        community_id: str,
+        name: str,
+        export_limit_kw: float,
+        import_limit_kw: float,
+        user_id: str,
+    ) -> dict:
+        self.db.execute(
+            """
+            INSERT INTO communities (community_id, name, export_limit_kw, import_limit_kw, user_id)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (community_id) DO NOTHING
+            """,
+            (community_id, name, export_limit_kw, import_limit_kw, user_id),
+        )
+        return self.get_community(community_id, user_id)
+
+    def get_community(self, community_id: str, user_id: str = None) -> dict | None:
+        if user_id:
+            rows = self.db.execute(
+                """SELECT community_id, name, export_limit_kw, import_limit_kw, created_at
+                   FROM communities WHERE community_id = %s AND user_id = %s""",
+                (community_id, user_id), fetch=True,
+            ) or []
+        else:
+            rows = self.db.execute(
+                """SELECT community_id, name, export_limit_kw, import_limit_kw, created_at
+                   FROM communities WHERE community_id = %s""",
+                (community_id,), fetch=True,
+            ) or []
+        if not rows:
+            return None
+        return self._community_row_to_dict(rows[0])
+
+    def get_all_communities(self, user_id: str) -> list:
+        rows = self.db.execute(
+            """SELECT community_id, name, export_limit_kw, import_limit_kw, created_at
+               FROM communities WHERE user_id = %s ORDER BY created_at DESC""",
+            (user_id,), fetch=True,
+        ) or []
+        return [self._community_row_to_dict(r) for r in rows]
+
+    def delete_community(self, community_id: str):
+        self.db.execute("DELETE FROM communities WHERE community_id = %s", (community_id,))
+
+    def _community_row_to_dict(self, r) -> dict:
+        return {
+            "community_id": r[0],
+            "name": r[1],
+            "export_limit_kw": r[2],
+            "import_limit_kw": r[3],
+            "created_at": r[4].isoformat() if r[4] else None,
+        }
+
+    # -------------------------------------------------------------------------
+    # Member CRUD
+    # -------------------------------------------------------------------------
+
+    def add_member(self, member_id: str, community_id: str, household_id: str, role: str = "member") -> dict:
+        self.db.execute(
+            """
+            INSERT INTO members (member_id, community_id, household_id, role)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (community_id, household_id) DO NOTHING
+            """,
+            (member_id, community_id, household_id, role),
+        )
+        return self.get_member(member_id)
+
+    def get_member(self, member_id: str) -> dict | None:
+        rows = self.db.execute(
+            "SELECT member_id, community_id, household_id, role, joined_at FROM members WHERE member_id = %s",
+            (member_id,), fetch=True,
+        ) or []
+        if not rows:
+            return None
+        return self._member_row_to_dict(rows[0])
+
+    def get_members(self, community_id: str) -> list:
+        rows = self.db.execute(
+            """SELECT member_id, community_id, household_id, role, joined_at
+               FROM members WHERE community_id = %s ORDER BY joined_at""",
+            (community_id,), fetch=True,
+        ) or []
+        return [self._member_row_to_dict(r) for r in rows]
+
+    def remove_member(self, member_id: str):
+        self.db.execute("DELETE FROM members WHERE member_id = %s", (member_id,))
+
+    def _member_row_to_dict(self, r) -> dict:
+        return {
+            "member_id": r[0],
+            "community_id": r[1],
+            "household_id": r[2],
+            "role": r[3],
+            "joined_at": r[4].isoformat() if r[4] else None,
+        }
+
+    # -------------------------------------------------------------------------
+    # Participation rules
+    # -------------------------------------------------------------------------
+
+    def set_participation_rule(
+        self, rule_id: str, community_id: str, policy: str, priority_order: list = None
+    ) -> dict:
+        import json
+        self.db.execute(
+            """
+            INSERT INTO participation_rules (rule_id, community_id, policy, priority_order)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (rule_id, community_id, policy, json.dumps(priority_order) if priority_order else None),
+        )
+        return self.get_active_rule(community_id)
+
+    def get_active_rule(self, community_id: str) -> dict | None:
+        import json
+        rows = self.db.execute(
+            """SELECT rule_id, community_id, policy, priority_order, effective_from
+               FROM participation_rules WHERE community_id = %s
+               ORDER BY effective_from DESC LIMIT 1""",
+            (community_id,), fetch=True,
+        ) or []
+        if not rows:
+            return None
+        r = rows[0]
+        raw = r[3]
+        priority_order = json.loads(raw) if isinstance(raw, str) else raw
+        return {
+            "rule_id": r[0],
+            "community_id": r[1],
+            "policy": r[2],
+            "priority_order": priority_order,
+            "effective_from": r[4].isoformat() if r[4] else None,
+        }
+
+    # -------------------------------------------------------------------------
+    # Allocation ledger
+    # -------------------------------------------------------------------------
+
+    def save_allocation_ledger(self, entries: list) -> None:
+        query = """
+        INSERT INTO allocation_ledger
+            (ledger_id, community_id, interval_start, from_household_id, to_household_id, amount_kwh, policy)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
+        for e in entries:
+            self.db.execute(query, (
+                e["ledger_id"], e["community_id"], e["interval_start"],
+                e["from_household_id"], e["to_household_id"], e["amount_kwh"], e["policy"],
+            ))
+
+    def get_allocation_ledger(self, community_id: str, limit: int = 100) -> list:
+        rows = self.db.execute(
+            """SELECT ledger_id, community_id, interval_start, from_household_id,
+                      to_household_id, amount_kwh, policy
+               FROM allocation_ledger WHERE community_id = %s
+               ORDER BY interval_start DESC, created_at DESC LIMIT %s""",
+            (community_id, limit), fetch=True,
+        ) or []
+        return [
+            {
+                "ledger_id": r[0],
+                "community_id": r[1],
+                "interval_start": r[2].isoformat() if r[2] else None,
+                "from_household_id": r[3],
+                "to_household_id": r[4],
+                "amount_kwh": r[5],
+                "policy": r[6],
+            }
+            for r in rows
+        ]
+
+    # -------------------------------------------------------------------------
+    # Tariffs
+    # -------------------------------------------------------------------------
+
+    def create_tariff(
+        self, tariff_id: str, community_id: str, name: str,
+        import_rate: float, export_rate: float, feed_in_rate: float = 0.0,
+    ) -> dict:
+        self.db.execute(
+            """
+            INSERT INTO tariffs (tariff_id, community_id, name, import_rate, export_rate, feed_in_rate)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (tariff_id, community_id, name, import_rate, export_rate, feed_in_rate),
+        )
+        return self.get_tariff(tariff_id)
+
+    def get_tariff(self, tariff_id: str) -> dict | None:
+        rows = self.db.execute(
+            """SELECT tariff_id, community_id, name, import_rate, export_rate, feed_in_rate
+               FROM tariffs WHERE tariff_id = %s""",
+            (tariff_id,), fetch=True,
+        ) or []
+        if not rows:
+            return None
+        return self._tariff_row_to_dict(rows[0])
+
+    def get_tariffs(self, community_id: str) -> list:
+        rows = self.db.execute(
+            """SELECT tariff_id, community_id, name, import_rate, export_rate, feed_in_rate
+               FROM tariffs WHERE community_id = %s ORDER BY created_at""",
+            (community_id,), fetch=True,
+        ) or []
+        return [self._tariff_row_to_dict(r) for r in rows]
+
+    def _tariff_row_to_dict(self, r) -> dict:
+        return {
+            "tariff_id": r[0],
+            "community_id": r[1],
+            "name": r[2],
+            "import_rate": r[3],
+            "export_rate": r[4],
+            "feed_in_rate": r[5],
+        }
+
+    # -------------------------------------------------------------------------
+    # Settlement
+    # -------------------------------------------------------------------------
+
+    def create_settlement_run(
+        self, run_id: str, community_id: str, period_start: str, period_end: str
+    ) -> dict:
+        self.db.execute(
+            """
+            INSERT INTO settlement_runs (run_id, community_id, period_start, period_end, status)
+            VALUES (%s, %s, %s, %s, 'pending')
+            """,
+            (run_id, community_id, period_start, period_end),
+        )
+        return self.get_settlement_run(run_id)
+
+    def update_settlement_run_status(self, run_id: str, status: str):
+        self.db.execute(
+            "UPDATE settlement_runs SET status = %s WHERE run_id = %s",
+            (status, run_id),
+        )
+
+    def get_settlement_run(self, run_id: str) -> dict | None:
+        rows = self.db.execute(
+            """SELECT run_id, community_id, period_start, period_end, status, created_at
+               FROM settlement_runs WHERE run_id = %s""",
+            (run_id,), fetch=True,
+        ) or []
+        if not rows:
+            return None
+        r = rows[0]
+        return {
+            "run_id": r[0],
+            "community_id": r[1],
+            "period_start": r[2].isoformat() if r[2] else str(r[2]),
+            "period_end": r[3].isoformat() if r[3] else str(r[3]),
+            "status": r[4],
+            "created_at": r[5].isoformat() if r[5] else None,
+        }
+
+    def get_settlement_runs(self, community_id: str) -> list:
+        rows = self.db.execute(
+            """SELECT run_id, community_id, period_start, period_end, status, created_at
+               FROM settlement_runs WHERE community_id = %s ORDER BY created_at DESC""",
+            (community_id,), fetch=True,
+        ) or []
+        return [
+            {
+                "run_id": r[0],
+                "community_id": r[1],
+                "period_start": r[2].isoformat() if r[2] else str(r[2]),
+                "period_end": r[3].isoformat() if r[3] else str(r[3]),
+                "status": r[4],
+                "created_at": r[5].isoformat() if r[5] else None,
+            }
+            for r in rows
+        ]
+
+    def save_settlement_lines(self, lines: list):
+        query = """
+        INSERT INTO settlement_lines (line_id, run_id, household_id, net_kwh, cost, savings)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        """
+        for line in lines:
+            self.db.execute(query, (
+                line["line_id"], line["run_id"], line["household_id"],
+                line["net_kwh"], line["cost"], line["savings"],
+            ))
+
+    def get_settlement_lines(self, run_id: str) -> list:
+        rows = self.db.execute(
+            """SELECT line_id, run_id, household_id, net_kwh, cost, savings
+               FROM settlement_lines WHERE run_id = %s ORDER BY household_id""",
+            (run_id,), fetch=True,
+        ) or []
+        return [
+            {
+                "line_id": r[0],
+                "run_id": r[1],
+                "household_id": r[2],
+                "net_kwh": r[3],
+                "cost": r[4],
+                "savings": r[5],
+            }
+            for r in rows
+        ]
+
+    # -------------------------------------------------------------------------
+    # Battery assets (stationary)
+    # -------------------------------------------------------------------------
+
+    def create_battery_asset(
+        self,
+        battery_id: str,
+        household_id: str,
+        name: str,
+        capacity_kwh: float,
+        soc_kwh: float,
+        max_charge_kw: float,
+        max_discharge_kw: float,
+        eta: float = 0.95,
+    ) -> dict:
+        self.db.execute(
+            """
+            INSERT INTO battery_assets
+                (battery_id, household_id, name, capacity_kwh, soc_kwh,
+                 max_charge_kw, max_discharge_kw, eta)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (battery_id, household_id, name, capacity_kwh, soc_kwh,
+             max_charge_kw, max_discharge_kw, eta),
+        )
+        return self.get_battery_asset(battery_id)
+
+    def get_battery_asset(self, battery_id: str) -> dict | None:
+        rows = self.db.execute(
+            """SELECT battery_id, household_id, name, capacity_kwh, soc_kwh,
+                      max_charge_kw, max_discharge_kw, eta
+               FROM battery_assets WHERE battery_id = %s""",
+            (battery_id,), fetch=True,
+        ) or []
+        if not rows:
+            return None
+        return self._battery_asset_row_to_dict(rows[0])
+
+    def get_battery_assets_by_community(self, community_id: str) -> list:
+        rows = self.db.execute(
+            """SELECT ba.battery_id, ba.household_id, ba.name, ba.capacity_kwh, ba.soc_kwh,
+                      ba.max_charge_kw, ba.max_discharge_kw, ba.eta
+               FROM battery_assets ba
+               JOIN members m ON ba.household_id = m.household_id
+               WHERE m.community_id = %s
+               ORDER BY ba.created_at""",
+            (community_id,), fetch=True,
+        ) or []
+        return [self._battery_asset_row_to_dict(r) for r in rows]
+
+    def update_battery_asset_soc(self, battery_id: str, new_soc: float):
+        self.db.execute(
+            "UPDATE battery_assets SET soc_kwh = %s WHERE battery_id = %s",
+            (new_soc, battery_id),
+        )
+
+    def delete_battery_asset(self, battery_id: str):
+        self.db.execute("DELETE FROM battery_assets WHERE battery_id = %s", (battery_id,))
+
+    def _battery_asset_row_to_dict(self, r) -> dict:
+        return {
+            "battery_id": r[0],
+            "household_id": r[1],
+            "name": r[2],
+            "capacity_kwh": r[3],
+            "soc_kwh": r[4],
+            "max_charge_kw": r[5],
+            "max_discharge_kw": r[6],
+            "eta": r[7],
+        }
+
+    # -------------------------------------------------------------------------
+    # Grid connection limits
+    # -------------------------------------------------------------------------
+
+    def set_grid_limit(
+        self, limit_id: str, community_id: str, export_limit_kw: float, import_limit_kw: float
+    ) -> dict:
+        self.db.execute(
+            """
+            INSERT INTO grid_connection_limits (limit_id, community_id, export_limit_kw, import_limit_kw)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (limit_id, community_id, export_limit_kw, import_limit_kw),
+        )
+        return self.get_active_grid_limit(community_id)
+
+    def get_active_grid_limit(self, community_id: str) -> dict | None:
+        rows = self.db.execute(
+            """SELECT limit_id, community_id, export_limit_kw, import_limit_kw, effective_from
+               FROM grid_connection_limits WHERE community_id = %s
+               ORDER BY effective_from DESC LIMIT 1""",
+            (community_id,), fetch=True,
+        ) or []
+        if not rows:
+            return None
+        r = rows[0]
+        return {
+            "limit_id": r[0],
+            "community_id": r[1],
+            "export_limit_kw": r[2],
+            "import_limit_kw": r[3],
+            "effective_from": r[4].isoformat() if r[4] else None,
+        }
+
+    # -------------------------------------------------------------------------
+    # Active constraints (snapshot per run)
+    # -------------------------------------------------------------------------
+
+    def save_active_constraint(
+        self,
+        constraint_id: str,
+        community_id: str,
+        run_time: str,
+        export_limit_kw: float,
+        import_limit_kw: float,
+        peak_export_kw: float = None,
+        peak_import_kw: float = None,
+        constrained: bool = False,
+    ) -> dict:
+        self.db.execute(
+            """
+            INSERT INTO active_constraints
+                (constraint_id, community_id, run_time, export_limit_kw, import_limit_kw,
+                 peak_export_kw, peak_import_kw, constrained)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (constraint_id, community_id, run_time, export_limit_kw, import_limit_kw,
+             peak_export_kw, peak_import_kw, constrained),
+        )
+        return {
+            "constraint_id": constraint_id,
+            "community_id": community_id,
+            "run_time": run_time,
+            "export_limit_kw": export_limit_kw,
+            "import_limit_kw": import_limit_kw,
+            "peak_export_kw": peak_export_kw,
+            "peak_import_kw": peak_import_kw,
+            "constrained": constrained,
+        }
+
+    def get_household_net_kwh(
+        self, household_id: str, period_start: str, period_end: str
+    ) -> float:
+        """Return net kWh (production - consumption) for a household in a period."""
+        prod_rows = self.db.execute(
+            """SELECT COALESCE(SUM(s.value), 0)
+               FROM solar s
+               JOIN energy_sources es ON s.source_id = es.source_id
+               WHERE es.household_id = %s AND s.time >= %s AND s.time <= %s""",
+            (household_id, period_start, period_end), fetch=True,
+        ) or [(0,)]
+        production = float(prod_rows[0][0])
+
+        cons_rows = self.db.execute(
+            """SELECT COALESCE(SUM(value), 0)
+               FROM household_load
+               WHERE household_id = %s AND time >= %s AND time <= %s""",
+            (household_id, period_start, period_end), fetch=True,
+        ) or [(0,)]
+        consumption = float(cons_rows[0][0])
+
+        return production - consumption
+

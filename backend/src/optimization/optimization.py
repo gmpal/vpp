@@ -54,11 +54,15 @@ def optimize(
     evs: List[Dict[str, Any]],
     start: str = None,
     end: str = None,
+    batteries: List[Dict[str, Any]] = None,
+    export_limit_kw: float = None,
+    import_limit_kw: float = None,
 ) -> pd.DataFrame:
     """
     Performs an optimization over the specified time range [start, end],
     using the aggregated solar, load, and market price from the database,
-    and a list of EV dicts (rows from the electric_vehicles table).
+    a list of EV dicts, optional stationary battery dicts, and optional
+    grid export/import hard constraints.
 
     Parameters
     ----------
@@ -69,6 +73,13 @@ def optimize(
         Start time (inclusive).
     end : str
         End time (inclusive).
+    batteries : List[Dict[str, Any]] | None
+        Stationary battery_assets rows. Each dict must have: battery_id,
+        capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta.
+    export_limit_kw : float | None
+        Hard feeder export cap (kW). No constraint if None.
+    import_limit_kw : float | None
+        Hard feeder import cap (kW). No constraint if None.
 
     Returns
     -------
@@ -93,20 +104,33 @@ def optimize(
 
     M = 1_000
 
-    for ev in evs:
-        b_label = ev["vehicle_id"]
+    # Combine EVs and stationary batteries into a single asset list
+    all_assets = list(evs)
+    for b in (batteries or []):
+        # Normalise field names: battery_assets uses battery_id, EVs use vehicle_id
+        all_assets.append({
+            "vehicle_id": b["battery_id"],
+            "capacity_kwh": b["capacity_kwh"],
+            "soc_kwh": b["soc_kwh"],
+            "max_charge_kw": b["max_charge_kw"],
+            "max_discharge_kw": b["max_discharge_kw"],
+            "eta": b["eta"],
+        })
+
+    for asset in all_assets:
+        b_label = asset["vehicle_id"]
         logger.debug(
-            "EV %s: max_charge_kw=%s, max_discharge_kw=%s, capacity_kwh=%s, soc_kwh=%s, eta=%s",
-            b_label, ev["max_charge_kw"], ev["max_discharge_kw"],
-            ev["capacity_kwh"], ev["soc_kwh"], ev["eta"],
+            "Asset %s: max_charge_kw=%s, max_discharge_kw=%s, capacity_kwh=%s, soc_kwh=%s, eta=%s",
+            b_label, asset["max_charge_kw"], asset["max_discharge_kw"],
+            asset["capacity_kwh"], asset["soc_kwh"], asset["eta"],
         )
 
         for t in time_steps:
-            battery_charge[(b_label, t)] = pulp.LpVariable(f"Charge_{b_label}_{t}", lowBound=0, upBound=ev["max_charge_kw"])
-            battery_discharge[(b_label, t)] = pulp.LpVariable(f"Discharge_{b_label}_{t}", lowBound=0, upBound=ev["max_discharge_kw"])
-            battery_soc[(b_label, t)] = pulp.LpVariable(f"SOC_{b_label}_{t}", lowBound=0, upBound=ev["capacity_kwh"])
+            battery_charge[(b_label, t)] = pulp.LpVariable(f"Charge_{b_label}_{t}", lowBound=0, upBound=asset["max_charge_kw"])
+            battery_discharge[(b_label, t)] = pulp.LpVariable(f"Discharge_{b_label}_{t}", lowBound=0, upBound=asset["max_discharge_kw"])
+            battery_soc[(b_label, t)] = pulp.LpVariable(f"SOC_{b_label}_{t}", lowBound=0, upBound=asset["capacity_kwh"])
 
-        problem += battery_soc[(b_label, 0)] == ev["soc_kwh"]
+        problem += battery_soc[(b_label, 0)] == asset["soc_kwh"]
 
         for t in time_steps:
             if t == 0:
@@ -114,7 +138,7 @@ def optimize(
             problem += (
                 battery_soc[(b_label, t)]
                 == battery_soc[(b_label, t - 1)]
-                + ev["eta"] * battery_charge[(b_label, t)]
+                + asset["eta"] * battery_charge[(b_label, t)]
                 - battery_discharge[(b_label, t)]
             )
 
@@ -134,6 +158,12 @@ def optimize(
         problem += grid_buy[t] <= -net_excess + M * delta[t]
         problem += grid_buy[t] <= M * (1 - delta[t])
 
+        # --- Grid hard constraints ---
+        if export_limit_kw is not None:
+            problem += grid_sell[t] <= export_limit_kw
+        if import_limit_kw is not None:
+            problem += grid_buy[t] <= import_limit_kw
+
     total_cost = pulp.lpSum([df["price"].iloc[t] * (grid_buy[t] - grid_sell[t]) for t in time_steps])
     problem += total_cost
 
@@ -145,8 +175,8 @@ def optimize(
     for t in time_steps:
         gb = pulp.value(grid_buy[t])
         gs = pulp.value(grid_sell[t])
-        for ev in evs:
-            b_label = ev["vehicle_id"]
+        for asset in all_assets:
+            b_label = asset["vehicle_id"]
             results.append({
                 "time": time_index[t],
                 "battery_id": b_label,

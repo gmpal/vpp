@@ -367,6 +367,143 @@ export const dischargeVehicle = (
 export const getCommunitySummary = () =>
   api.get<any>("/community/summary").then((r) => r.data);
 
+// Community CRUD
+export const getCommunities = () =>
+  api.get<any[]>("/community").then((r) => r.data);
+
+export const createCommunity = (data: {
+  name: string;
+  export_limit_kw?: number;
+  import_limit_kw?: number;
+}) => api.post<any>("/community", data).then((r) => r.data);
+
+export const getCommunity = (communityId: string) =>
+  api.get<any>(`/community/${communityId}`).then((r) => r.data);
+
+export const deleteCommunity = (communityId: string) =>
+  api.delete(`/community/${communityId}`).then((r) => r.data);
+
+// Members
+export const getCommunityMembers = (communityId: string) =>
+  api.get<any[]>(`/community/${communityId}/members`).then((r) => r.data);
+
+export const addCommunityMember = (
+  communityId: string,
+  data: { household_id: string; role?: string },
+) => api.post<any>(`/community/${communityId}/members`, data).then((r) => r.data);
+
+export const removeCommunityMember = (
+  communityId: string,
+  memberId: string,
+) =>
+  api
+    .delete(`/community/${communityId}/members/${memberId}`)
+    .then((r) => r.data);
+
+// Participation policy
+export const getCommunityPolicy = (communityId: string) =>
+  api.get<any>(`/community/${communityId}/policy`).then((r) => r.data);
+
+export const setCommunityPolicy = (
+  communityId: string,
+  data: { policy: string; priority_order?: string[] },
+) => api.post<any>(`/community/${communityId}/policy`, data).then((r) => r.data);
+
+// Allocation
+export const allocateSurplus = (
+  communityId: string,
+  data: {
+    interval_start: string;
+    surplus_by_household: Record<string, number>;
+    demand_by_household: Record<string, number>;
+  },
+) =>
+  api
+    .post<any>(`/community/${communityId}/allocate`, data)
+    .then((r) => r.data);
+
+export const getAllocationLedger = (
+  communityId: string,
+  limit?: number,
+) =>
+  api
+    .get<any[]>(`/community/${communityId}/allocation-ledger`, {
+      params: limit ? { limit } : {},
+    })
+    .then((r) => r.data);
+
+// Tariffs
+export const getCommunityTariffs = (communityId: string) =>
+  api.get<any[]>(`/community/${communityId}/tariffs`).then((r) => r.data);
+
+export const createCommunityTariff = (
+  communityId: string,
+  data: {
+    name: string;
+    import_rate: number;
+    export_rate: number;
+    feed_in_rate?: number;
+  },
+) =>
+  api
+    .post<any>(`/community/${communityId}/tariffs`, data)
+    .then((r) => r.data);
+
+// Settlement
+export const triggerSettlement = (
+  communityId: string,
+  data: { period_start: string; period_end: string },
+) =>
+  api.post<any>(`/community/${communityId}/settle`, data).then((r) => r.data);
+
+export const getSettlementRuns = (communityId: string) =>
+  api.get<any[]>(`/community/${communityId}/settlement`).then((r) => r.data);
+
+export const getSettlementLines = (communityId: string, runId: string) =>
+  api
+    .get<any[]>(`/community/${communityId}/settlement/${runId}/lines`)
+    .then((r) => r.data);
+
+// Battery assets (stationary)
+export const getCommunityBatteries = (communityId: string) =>
+  api.get<any[]>(`/community/${communityId}/batteries`).then((r) => r.data);
+
+export const addCommunityBattery = (
+  communityId: string,
+  data: {
+    household_id: string;
+    name: string;
+    capacity_kwh: number;
+    soc_kwh: number;
+    max_charge_kw: number;
+    max_discharge_kw: number;
+    eta?: number;
+  },
+) =>
+  api
+    .post<any>(`/community/${communityId}/batteries`, data)
+    .then((r) => r.data);
+
+export const removeCommunityBattery = (
+  communityId: string,
+  batteryId: string,
+) =>
+  api
+    .delete(`/community/${communityId}/batteries/${batteryId}`)
+    .then((r) => r.data);
+
+// Grid limits
+export const getCommunityGridLimits = (communityId: string) =>
+  api.get<any>(`/community/${communityId}/grid-limits`).then((r) => r.data);
+
+export const setCommunityGridLimits = (
+  communityId: string,
+  data: { export_limit_kw: number; import_limit_kw: number },
+) =>
+  api
+    .post<any>(`/community/${communityId}/grid-limits`, data)
+    .then((r) => r.data);
+
 ////////////////////////////////////////
 // Weather
 ////////////////////////////////////////
