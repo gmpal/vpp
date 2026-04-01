@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -26,10 +26,7 @@ import {
 } from "../api";
 import { format } from "date-fns";
 import TimeWindowSelect from "./TimeWindowSelect";
-import {
-  DEFAULT_TIME_WINDOW_MINUTES,
-  getTimeWindowRange,
-} from "../timeWindow";
+import { DEFAULT_TIME_WINDOW_MINUTES } from "../timeWindow";
 
 const SOURCE_TYPES = ["solar", "load", "market"];
 
@@ -79,7 +76,6 @@ const ForecastTab: React.FC = () => {
 
   // Fetch forecast data when source or sourceId changes
   useEffect(() => {
-    const { startIso, endIso } = getTimeWindowRange(windowMinutes);
     const sourceIdParam = needsSourceId(selectedSource)
       ? selectedSourceId
       : undefined;
@@ -90,12 +86,7 @@ const ForecastTab: React.FC = () => {
     const load = async () => {
       setError("");
       try {
-        const data = await fetchForecastedData(
-          selectedSource,
-          sourceIdParam,
-          startIso,
-          endIso,
-        );
+        const data = await fetchForecastedData(selectedSource, sourceIdParam);
         setForecastData(data);
       } catch {
         setForecastData([]);
@@ -108,9 +99,27 @@ const ForecastTab: React.FC = () => {
     load();
     const interval = setInterval(load, 5000);
     return () => clearInterval(interval);
-  }, [selectedSource, selectedSourceId, windowMinutes]);
+  }, [selectedSource, selectedSourceId]);
 
-  const chartData = forecastData.map((point) => ({
+  const windowedForecastData = useMemo(() => {
+    if (forecastData.length === 0) {
+      return [];
+    }
+
+    const sorted = [...forecastData].sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
+    const latestTs = new Date(sorted[sorted.length - 1].timestamp).getTime();
+    const startTs = latestTs - windowMinutes * 60_000;
+
+    return sorted.filter((point) => {
+      const ts = new Date(point.timestamp).getTime();
+      return !Number.isNaN(ts) && ts >= startTs && ts <= latestTs;
+    });
+  }, [forecastData, windowMinutes]);
+
+  const chartData = windowedForecastData.map((point) => ({
     timestamp: formatTimestamp(point.timestamp),
     value: point.value,
   }));
@@ -198,10 +207,7 @@ const ForecastTab: React.FC = () => {
                 strokeDasharray="5 5"
                 strokeWidth={2}
                 dot={false}
-                name={`${
-                  selectedSource.charAt(0).toUpperCase() +
-                  selectedSource.slice(1)
-                } Forecast`}
+                name={`${selectedSource.charAt(0).toUpperCase() + selectedSource.slice(1)} Forecast`}
               />
             </LineChart>
           </ResponsiveContainer>

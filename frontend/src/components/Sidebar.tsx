@@ -117,12 +117,12 @@ const Sidebar: React.FC = () => {
           prev.map((s, i) =>
             i === idx
               ? {
-                  status,
-                  detail:
-                    status === "done" && count !== undefined && count > 0
-                      ? `${count} rows seeded`
-                      : undefined,
-                }
+                status,
+                detail:
+                  status === "done" && count !== undefined && count > 0
+                    ? `${count} rows seeded`
+                    : undefined,
+              }
               : s,
           ),
         );

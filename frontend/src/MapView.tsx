@@ -133,9 +133,8 @@ const AddSourceDialog: React.FC<AddSourceDialogProps> = ({
           label="Name (optional)"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder={`${
-            sourceType.charAt(0).toUpperCase() + sourceType.slice(1)
-          } Source`}
+          placeholder={`${sourceType.charAt(0).toUpperCase() + sourceType.slice(1)
+            } Source`}
         />
       </DialogContent>
       <DialogActions>

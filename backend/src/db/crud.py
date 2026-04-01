@@ -577,7 +577,16 @@ class CrudManager:
         """
         self.db.execute(
             query,
-            (battery_id, household_id, name, capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta),
+            (
+                battery_id,
+                household_id,
+                name,
+                capacity_kwh,
+                soc_kwh,
+                max_charge_kw,
+                max_discharge_kw,
+                eta,
+            ),
         )
 
     def get_all_batteries(self, user_id: str) -> list:
@@ -642,9 +651,7 @@ class CrudManager:
         )
 
     def delete_battery(self, battery_id: str):
-        self.db.execute(
-            "DELETE FROM batteries WHERE battery_id = %s", (battery_id,)
-        )
+        self.db.execute("DELETE FROM batteries WHERE battery_id = %s", (battery_id,))
 
     def _battery_row_to_dict(self, r) -> dict:
         return {
@@ -751,7 +758,11 @@ class CrudManager:
         net = total_production - total_consumption
         if net > 0.1:
             action = "selling"
-        elif net < -0.1 and total_storage_count > 0 and total_storage_soc < total_storage_capacity * 0.9:
+        elif (
+            net < -0.1
+            and total_storage_count > 0
+            and total_storage_soc < total_storage_capacity * 0.9
+        ):
             action = "charging_evs"
         elif net < -0.1:
             action = "buying"

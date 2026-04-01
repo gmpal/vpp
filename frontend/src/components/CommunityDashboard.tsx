@@ -277,9 +277,9 @@ const CommunityDashboard: React.FC = () => {
             value={
               summary.ev_soc_capacity + summary.battery_soc_capacity > 0
                 ?
-                    ((summary.ev_soc_total + summary.battery_soc_total) /
-                      (summary.ev_soc_capacity + summary.battery_soc_capacity)) *
-                    100
+                ((summary.ev_soc_total + summary.battery_soc_total) /
+                  (summary.ev_soc_capacity + summary.battery_soc_capacity)) *
+                100
                 : 0
             }
             sx={{ height: 12, borderRadius: 6 }}
@@ -290,10 +290,10 @@ const CommunityDashboard: React.FC = () => {
             {(summary.ev_soc_capacity + summary.battery_soc_capacity).toFixed(1)} kWh (
             {summary.ev_soc_capacity + summary.battery_soc_capacity > 0
               ? (
-                  ((summary.ev_soc_total + summary.battery_soc_total) /
-                    (summary.ev_soc_capacity + summary.battery_soc_capacity)) *
-                  100
-                ).toFixed(0)
+                ((summary.ev_soc_total + summary.battery_soc_total) /
+                  (summary.ev_soc_capacity + summary.battery_soc_capacity)) *
+                100
+              ).toFixed(0)
               : 0}
             %)
           </Typography>

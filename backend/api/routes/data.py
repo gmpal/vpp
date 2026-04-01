@@ -40,7 +40,10 @@ def query_realtime_data(
             end=None,
             top=100,
         )
-        return [DataPoint(timestamp=item["time"].isoformat(), value=item["value"]) for item in data_list]
+        return [
+            DataPoint(timestamp=item["time"].isoformat(), value=item["value"])
+            for item in data_list
+        ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -118,7 +121,10 @@ def query_forecasted_data(
 ):
     try:
         data_list = crud.load_forecasted_data(source, source_id, start, end)
-        return [DataPoint(timestamp=item["time"].isoformat(), value=item["yhat"]) for item in data_list]
+        return [
+            DataPoint(timestamp=item["time"].isoformat(), value=item["yhat"])
+            for item in data_list
+        ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -142,7 +148,10 @@ def query_historical_data(
             end=end,
             top=top,
         )
-        return [DataPoint(timestamp=item["time"].isoformat(), value=item["value"]) for item in data_list]
+        return [
+            DataPoint(timestamp=item["time"].isoformat(), value=item["value"])
+            for item in data_list
+        ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
