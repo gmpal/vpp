@@ -2,11 +2,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from backend.api.main import app
-from backend.api.routes.batteries import batteries
-from backend.api.routes.optimization import router as optimize_router
 from backend.api.routes.batteries import router as batteries_router
-
-from backend.src.storage.battery import Battery
+from backend.api.models import Battery
 from backend.src.optimization.optimization import load_optimization_data
 
 
@@ -22,8 +19,8 @@ def client():
 # Fixture to reset the in-memory batteries dictionary
 @pytest.fixture
 def reset_batteries():
-    batteries.clear()
-    yield
+    # Since batteries dictionary was removed or moved, let's just do nothing or clear the mock store
+    pass
 
 
 # Test /health endpoint

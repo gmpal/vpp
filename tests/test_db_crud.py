@@ -4,7 +4,7 @@ import pandas as pd
 from unittest.mock import Mock, patch
 from backend.src.db.crud import CrudManager
 from backend.src.db.connection import DatabaseManager
-from backend.src.storage.battery import Battery
+from backend.api.models import Battery
 
 
 @pytest.fixture
