@@ -170,3 +170,15 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
 .aider*
+
+# Agent tools & artifacts
+.claude-flow/
+.claw/
+.mcp.json
+.swarm/
+claude-flow.config.json
+ruvector.db
+
+# Test artifacts
+frontend/coverage/
+test-results/

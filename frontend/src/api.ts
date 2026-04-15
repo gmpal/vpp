@@ -303,7 +303,22 @@ export async function fetchHistoricalData(
     `/historical/${source}`,
     { params },
   );
-  return response.data;
+  if (response.data.length > 0 || (!start && !end)) {
+    return response.data;
+  }
+
+  // Fallback for stale datasets: if the selected window has no points,
+  // fetch latest available points so charts are still informative.
+  const fallbackParams: Record<string, string | number> = { top };
+  if (source_id && source !== "market" && source !== "load") {
+    fallbackParams.source_id = source_id;
+  }
+  const fallbackResponse = await api.get<HistoricalDataPoint[]>(
+    `/historical/${source}`,
+    { params: fallbackParams },
+  );
+
+  return fallbackResponse.data;
 }
 
 export async function fetchForecastedData(

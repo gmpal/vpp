@@ -6,6 +6,9 @@ export const TIME_WINDOW_OPTIONS: Array<{ label: string; minutes: number }> = [
   { label: "Last 30 minutes", minutes: 30 },
   { label: "Last 60 minutes", minutes: 60 },
   { label: "Last 180 minutes", minutes: 180 },
+  { label: "Last 12 hours", minutes: 720 },
+  { label: "Last 24 hours", minutes: 1440 },
+  { label: "Last 7 days", minutes: 10080 },
 ];
 
 export function getTimeWindowRange(minutes: number): {

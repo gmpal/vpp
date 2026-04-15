@@ -18,7 +18,6 @@ interface RealTimeDataViewerProps {
   end?: string;
 }
 
-// TODO: make sure it resets when the source changes
 const RealTimeDataViewer: React.FC<RealTimeDataViewerProps> = ({
   source,
   sourceId,
@@ -35,6 +34,13 @@ const RealTimeDataViewer: React.FC<RealTimeDataViewerProps> = ({
   );
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setData([]);
+    setLastFetchedTime(localISOString(new Date()));
+    setLoading(true);
+    setError(null);
+  }, [source, sourceId]);
 
   useEffect(() => {
     const interval = setInterval(async () => {
