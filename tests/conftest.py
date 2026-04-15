@@ -7,8 +7,8 @@ import os
 
 DB_CONFIG = {
     "dbname": os.environ.get("POSTGRES_DB", "postgres"),
-    "user": os.environ.get("POSTGRES_USER", "postgres"),
-    "password": os.environ.get("POSTGRES_PASSWORD", "testpass"),
+    "user": os.environ.get("POSTGRES_USER", "gmpal"),
+    "password": os.environ.get("POSTGRES_PASSWORD", "postgresso"),
     "host": os.environ.get("TIMESCALEDB_HOST", "localhost"),
     "port": os.environ.get("POSTGRES_PORT", "5432"),
 }
