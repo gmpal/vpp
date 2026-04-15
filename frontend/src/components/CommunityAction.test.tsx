@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import CommunityAction from "./CommunityAction";
 import * as api from "../api";
 
@@ -26,10 +26,16 @@ describe("CommunityAction", () => {
     jest.clearAllTimers();
   });
 
-  it("renders nothing while loading (summary is null)", () => {
+  it("renders nothing while loading (summary is null)", async () => {
     mockApi.getCommunitySummary.mockImplementation(() => new Promise(() => {}));
-    const { container } = render(<CommunityAction />);
-    expect(container.firstChild).toBeNull();
+    let container: any;
+    await act(async () => {
+      const rendered = render(<CommunityAction />);
+      container = rendered.container;
+    });
+    await waitFor(() => {
+      expect(container.firstChild).toBeNull();
+    });
   });
 
   it("renders Selling state correctly", async () => {
@@ -38,10 +44,12 @@ describe("CommunityAction", () => {
       action: "selling",
       net: 2.3,
     });
-    render(<CommunityAction />);
-    await waitFor(() =>
-      expect(screen.getByText(/Selling/i)).toBeInTheDocument(),
-    );
+    await act(async () => {
+      render(<CommunityAction />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Selling/i)).toBeInTheDocument();
+    });
     expect(screen.getByText(/2\.30 kW to the grid/i)).toBeInTheDocument();
   });
 
@@ -51,10 +59,12 @@ describe("CommunityAction", () => {
       action: "buying",
       net: -1.1,
     });
-    render(<CommunityAction />);
-    await waitFor(() =>
-      expect(screen.getByText(/Buying/i)).toBeInTheDocument(),
-    );
+    await act(async () => {
+      render(<CommunityAction />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Buying/i)).toBeInTheDocument();
+    });
     expect(screen.getByText(/consider charging your EVs/i)).toBeInTheDocument();
   });
 
@@ -65,10 +75,12 @@ describe("CommunityAction", () => {
       net: 1.0,
       ev_count: 2,
     });
-    render(<CommunityAction />);
-    await waitFor(() =>
-      expect(screen.getByText(/Charging EVs/i)).toBeInTheDocument(),
-    );
+    await act(async () => {
+      render(<CommunityAction />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Charging EVs/i)).toBeInTheDocument();
+    });
     expect(screen.getByText(/surplus/i)).toBeInTheDocument();
   });
 
@@ -78,10 +90,12 @@ describe("CommunityAction", () => {
       action: "self_sufficient",
       net: 0,
     });
-    render(<CommunityAction />);
-    await waitFor(() =>
-      expect(screen.getByText(/Self-sufficient/i)).toBeInTheDocument(),
-    );
+    await act(async () => {
+      render(<CommunityAction />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Self-sufficient/i)).toBeInTheDocument();
+    });
     expect(
       screen.getByText(/production matches consumption/i),
     ).toBeInTheDocument();
@@ -89,23 +103,27 @@ describe("CommunityAction", () => {
 
   it("shows Currently label", async () => {
     mockApi.getCommunitySummary.mockResolvedValue(baseSummary);
-    render(<CommunityAction />);
-    await waitFor(() =>
-      expect(screen.getByText(/Currently/i)).toBeInTheDocument(),
-    );
+    await act(async () => {
+      render(<CommunityAction />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText(/Currently/i)).toBeInTheDocument();
+    });
   });
 
   it("polls getCommunitySummary on interval", async () => {
     jest.useFakeTimers();
     mockApi.getCommunitySummary.mockResolvedValue(baseSummary);
-    render(<CommunityAction />);
-    await waitFor(() =>
-      expect(mockApi.getCommunitySummary).toHaveBeenCalledTimes(1),
-    );
+    await act(async () => {
+      render(<CommunityAction />);
+    });
+    await waitFor(() => {
+      expect(mockApi.getCommunitySummary).toHaveBeenCalledTimes(1);
+    });
     jest.advanceTimersByTime(5000);
-    await waitFor(() =>
-      expect(mockApi.getCommunitySummary).toHaveBeenCalledTimes(2),
-    );
+    await waitFor(() => {
+      expect(mockApi.getCommunitySummary).toHaveBeenCalledTimes(2);
+    });
     jest.useRealTimers();
   });
 });
