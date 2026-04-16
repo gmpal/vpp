@@ -6,7 +6,7 @@ from backend.src.db.connection import DatabaseManager
 
 
 @pytest.fixture
-def mock_db_manager(mocker):
+def mock_db_manager():
     """Fixture to create a mocked DatabaseManager."""
     db = Mock(spec=DatabaseManager)
     db.renewables = ["solar"]

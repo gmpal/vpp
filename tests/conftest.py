@@ -17,10 +17,14 @@ def bypass_auth():
     yield
     app.dependency_overrides.clear()
 
-@pytest.fixture(scope="session", autouse=True)
-def setup_test_user(schema_manager, db_manager, bypass_auth):
-    """Ensure the test_user exists in the users table."""
+@pytest.fixture(scope="session")
+def setup_test_user(bypass_auth):
+    """Ensure the test_user exists in the users table. Only called by integration tests."""
+    # Lazy import to avoid circular dependencies
+    from backend.src.db import DatabaseManager, SchemaManager
     try:
+        db_manager = DatabaseManager()
+        schema_manager = SchemaManager(db_manager)
         schema_manager._create_users_table()
     except Exception:
         pass

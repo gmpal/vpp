@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from backend.api.main import app
 from backend.src.dependencies import get_crud_manager
+from backend.api.auth import get_current_user
 
 
 @pytest.fixture
@@ -12,7 +13,9 @@ def mock_crud():
 
 @pytest.fixture
 def client(mock_crud):
+    # Set up both the CRUD mock and auth bypass
     app.dependency_overrides[get_crud_manager] = lambda: mock_crud
+    app.dependency_overrides[get_current_user] = lambda: {"user_id": "test_user", "id": "test_user", "username": "test_user"}
     yield TestClient(app)
     app.dependency_overrides.clear()
 
