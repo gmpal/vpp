@@ -1,3 +1,4 @@
+import asyncio
 import os
 
 from fastapi import FastAPI
@@ -20,6 +21,36 @@ def ensure_core_tables():
         db.close()
     except Exception:
         pass  # DB may not be available yet; auth routes will fail gracefully
+
+
+@app.on_event("startup")
+async def resume_active_simulators():
+    """On startup, restart device simulators for all active energy sources."""
+    try:
+        from backend.src.streaming.simulator_manager import SimulatorManager
+
+        db = DatabaseManager()
+        rows = db.execute(
+            """
+            SELECT source_id, type, community_id, latitude, longitude
+            FROM energy_sources
+            WHERE community_id IS NOT NULL
+            """,
+            fetch=True,
+        ) or []
+        db.close()
+
+        for row in rows:
+            source_id, source_type, community_id, lat, lon = row
+            await SimulatorManager.start_simulator(
+                source_id=source_id,
+                source_type=source_type,
+                community_id=str(community_id),
+                latitude=lat,
+                longitude=lon,
+            )
+    except Exception:
+        pass  # DB not ready or no sources yet — simulators will be started on demand
 
 
 # In production set ALLOWED_ORIGINS=https://vpp.digital in the environment.

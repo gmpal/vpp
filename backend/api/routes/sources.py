@@ -1,3 +1,4 @@
+import asyncio
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -6,6 +7,7 @@ from backend.api.auth import get_current_user
 from backend.api.models import AddSourceRequest, EnergySourceWithData
 from backend.src.db import CrudManager, DatabaseManager
 from backend.src.dependencies import get_crud_manager, get_db_manager
+from backend.src.streaming.simulator_manager import SimulatorManager
 from backend.src.streaming.sources import create_new_source
 from backend.src.utils.logger import get_logger
 
@@ -48,6 +50,18 @@ def add_source_with_location(
         """,
             (source_id, request.source_type, request.latitude, request.longitude, name, request.household_id, current_user["user_id"], request.community_id),
         )
+
+        # Start device simulator when community_id is present
+        if request.community_id:
+            asyncio.create_task(
+                SimulatorManager.start_simulator(
+                    source_id=source_id,
+                    source_type=request.source_type,
+                    community_id=request.community_id,
+                    latitude=request.latitude,
+                    longitude=request.longitude,
+                )
+            )
 
         return EnergySourceWithData(
             source_id=source_id,
@@ -128,6 +142,8 @@ def delete_source(
         db.execute(f"DELETE FROM {source_type} WHERE source_id = %s", (source_id,))
         db.execute(f"DELETE FROM {source_type}_forecast WHERE source_id = %s", (source_id,))
         db.execute("DELETE FROM energy_sources WHERE source_id = %s", (source_id,))
+        # Stop simulator if running
+        asyncio.create_task(SimulatorManager.stop_simulator(source_id))
         return {"detail": "Source deleted successfully"}
     except HTTPException:
         raise
