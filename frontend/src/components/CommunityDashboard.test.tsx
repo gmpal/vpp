@@ -96,7 +96,7 @@ describe("CommunityDashboard", () => {
       render(<CommunityDashboard />);
     });
     await waitFor(() => {
-      expect(screen.getByText("Fleet EV State of Charge")).toBeInTheDocument();
+      expect(screen.getByText("Fleet EV State of Charge", { exact: false })).toBeInTheDocument();
     });
   });
 

@@ -1,8 +1,9 @@
 # API Framework
-fastapi==0.109.0
+fastapi==0.115.11
 uvicorn[standard]==0.27.0
 pydantic==2.5.3
 pydantic-settings==2.1.0
+starlette==0.47.2
 
 # Database Connection (pick one depending on if you use async)
 psycopg2-binary==2.9.9  # For standard synchronous code
@@ -30,9 +31,12 @@ windpowerlib==0.2.1
 httpx==0.27.0
 
 # Authentication
-python-jose[cryptography]==3.3.0
+# python-jose has vulnerable dependencies (pyasn1) and is unmaintained
+# Replaced with pyjwt + cryptography
+pyjwt==2.12.0
+cryptography==46.0.7
 bcrypt==4.2.1
-python-multipart==0.0.9
+python-multipart==0.0.22
 
 # Structured logging (JSON in production, coloured text in development)
 python-json-logger==2.0.7

@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import HouseholdPanel from "./HouseholdPanel";
 import * as api from "../api";
 
@@ -54,7 +54,9 @@ describe("HouseholdPanel", () => {
 
   it("renders household cards when households exist", async () => {
     mockApi.getHouseholds.mockResolvedValue([sampleHousehold]);
-    render(<HouseholdPanel />);
+    await act(async () => {
+      render(<HouseholdPanel />);
+    });
     await waitFor(() =>
       expect(screen.getByText("My House")).toBeInTheDocument(),
     );
@@ -63,10 +65,13 @@ describe("HouseholdPanel", () => {
   it("renders EVCard for each vehicle in a household", async () => {
     mockApi.getHouseholds.mockResolvedValue([sampleHousehold]);
     mockApi.getVehicles.mockResolvedValue([sampleVehicle]);
-    render(<HouseholdPanel />);
-    await waitFor(() =>
-      expect(screen.getByTestId("ev-card")).toBeInTheDocument(),
-    );
+    await act(async () => {
+      render(<HouseholdPanel />);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("My House")).toBeInTheDocument();
+      expect(screen.getByTestId("ev-card")).toBeInTheDocument();
+    });
     expect(screen.getByText("Family Car")).toBeInTheDocument();
   });
 
@@ -86,7 +91,9 @@ describe("HouseholdPanel", () => {
 
   it("Add EV button is enabled when households exist", async () => {
     mockApi.getHouseholds.mockResolvedValue([sampleHousehold]);
-    render(<HouseholdPanel />);
+    await act(async () => {
+      render(<HouseholdPanel />);
+    });
     await waitFor(() => screen.getByText("My House"));
     const addEvBtn = screen.getByText("Add EV").closest("button");
     expect(addEvBtn).not.toBeDisabled();
@@ -142,7 +149,9 @@ describe("HouseholdPanel", () => {
     mockApi.getHouseholds.mockResolvedValue([sampleHousehold]);
     mockApi.deleteHousehold.mockResolvedValue({});
 
-    render(<HouseholdPanel />);
+    await act(async () => {
+      render(<HouseholdPanel />);
+    });
     await waitFor(() => screen.getByText("My House"));
 
     // Find the delete IconButton in the household card

@@ -88,7 +88,7 @@ def test_generate_wind_data_with_df(mocker):
 def test_generate_wind_data_no_input(mocker):
     """Test wind data generation raises ValueError with no input."""
     with pytest.raises(
-        ValueError, match="Either weather_data_path or weather_data must be provided."
+        ValueError, match="You need to provide either weather_data or weather_data_path"
     ):
         generate_wind_data()
 

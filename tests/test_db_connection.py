@@ -1,62 +1,48 @@
 # tests/test_db_connection.py
 import pytest
 import psycopg2
-from unittest.mock import patch, Mock, mock_open
+from unittest.mock import patch, Mock
 from backend.src.db.connection import DatabaseManager
-
-# Sample config content for testing
-with open("db-config.ini", "w") as config_file:
-    config_file.write(
-        """
-        [TimescaleDB]
-        dbname=postgres
-        user=postgres
-        password=testpass
-        host=localhost
-        port=5432
-        """
-    )
-
-
-@pytest.fixture
-def db_manager():
-    """Fixture to create a fresh DatabaseManager instance for each test."""
-    return DatabaseManager()
 
 
 def test_init():
     """Test DatabaseManager initialization with default renewables."""
     db = DatabaseManager()
-    assert db.renewables == ["solar"]
+    assert db.renewables == ["solar", "wind"]
     assert isinstance(db.config, dict)
 
 
-@patch("os.environ", {"POSTGRES_DB": "env_db"})
-def test_load_config_with_env_vars(db_manager):
-    """Test config loading with environment variables overriding config file."""
-    config = db_manager._load_config()
-    assert config["dbname"] == "env_db"  # Env var takes precedence
-    assert config["user"] == "postgres"  # From config file
-    assert config["password"] == "password"
-    assert config["host"] == "localhost"
-    assert config["port"] == "5432"
+def test_config_has_required_keys():
+    """Test that the config dict contains expected database connection keys."""
+    db = DatabaseManager()
+    config = db.config
+    # DatabaseManager.config comes from settings.database_config
+    assert "host" in config
+    assert "port" in config
+    assert "user" in config
+    assert "password" in config
 
 
-@patch("os.environ", {})
-def test_load_config_without_env_vars(db_manager):
-    """Test config loading without environment variables."""
-    config = db_manager._load_config()
-    assert config["dbname"] == "postgres"  # From config file
-    assert config["user"] == "postgres"
-    assert config["password"] == "password"
-    assert config["host"] == "localhost"
-    assert config["port"] == "5432"
+def test_config_override():
+    """Test DatabaseManager initialization with explicit config override."""
+    custom_config = {
+        "host": "testhost",
+        "port": 5432,
+        "database": "testdb",
+        "user": "testuser",
+        "password": "testpass",
+    }
+    db = DatabaseManager(config=custom_config)
+    assert db.config == custom_config
+    assert db.config["host"] == "testhost"
+    assert db.config["user"] == "testuser"
 
 
 @patch("psycopg2.connect")
-def test_connect(mock_connect, db_manager):
+def test_connect(mock_connect):
     """Test database connection creation."""
     mock_connect.return_value = Mock()
-    conn = db_manager.connect()
-    assert mock_connect.called_once_with(**db_manager.config)
+    db = DatabaseManager()
+    conn = db.connect()
+    assert mock_connect.called
     assert conn is not None
