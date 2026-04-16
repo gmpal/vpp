@@ -1,6 +1,22 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
+
+
+class CommunityCreate(BaseModel):
+    name: str
+    location_lat: Optional[float] = None
+    location_lon: Optional[float] = None
+
+
+class Community(BaseModel):
+    community_id: str
+    manager_user_id: str
+    name: str
+    location_lat: Optional[float] = None
+    location_lon: Optional[float] = None
+    created_at: datetime
 
 
 class DataPoint(BaseModel):

@@ -206,6 +206,57 @@ class CrudManager:
             rows = self.db.execute(query, fetch=True) or []
         return [row[0] for row in rows]
 
+    # --- Community CRUD ---
+
+    def create_community(
+        self,
+        community_id: str,
+        manager_user_id: str,
+        name: str,
+        location_lat: float = None,
+        location_lon: float = None,
+    ) -> dict:
+        query = """
+        INSERT INTO communities (community_id, manager_user_id, name, location_lat, location_lon)
+        VALUES (%s, %s, %s, %s, %s)
+        RETURNING community_id, manager_user_id, name, location_lat, location_lon, created_at
+        """
+        rows = self.db.execute(
+            query, (community_id, manager_user_id, name, location_lat, location_lon), fetch=True
+        )
+        return self._community_row_to_dict(rows[0])
+
+    def get_community(self, community_id: str, manager_user_id: str) -> dict | None:
+        query = """
+        SELECT community_id, manager_user_id, name, location_lat, location_lon, created_at
+        FROM communities
+        WHERE community_id = %s AND manager_user_id = %s
+        """
+        rows = self.db.execute(query, (community_id, manager_user_id), fetch=True) or []
+        if not rows:
+            return None
+        return self._community_row_to_dict(rows[0])
+
+    def list_communities(self, manager_user_id: str) -> list:
+        query = """
+        SELECT community_id, manager_user_id, name, location_lat, location_lon, created_at
+        FROM communities
+        WHERE manager_user_id = %s
+        ORDER BY created_at DESC
+        """
+        rows = self.db.execute(query, (manager_user_id,), fetch=True) or []
+        return [self._community_row_to_dict(r) for r in rows]
+
+    def _community_row_to_dict(self, r) -> dict:
+        return {
+            "community_id": str(r[0]),
+            "manager_user_id": r[1],
+            "name": r[2],
+            "location_lat": r[3],
+            "location_lon": r[4],
+            "created_at": r[5],
+        }
+
     # --- Household CRUD ---
     def create_household(
         self,
