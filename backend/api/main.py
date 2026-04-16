@@ -3,7 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api.routes import admin, auth, community, data, forecasting, households, optimization, sources, vehicles, weather
+from backend.api.routes import admin, auth, batteries, community, data, forecasting, households, optimization, sources, vehicles, weather
 from backend.src.db import DatabaseManager, SchemaManager
 
 app = FastAPI()
@@ -51,6 +51,7 @@ app.include_router(optimization.router, prefix="/api")
 app.include_router(forecasting.router, prefix="/api")
 app.include_router(households.router, prefix="/api")
 app.include_router(vehicles.router, prefix="/api")
+app.include_router(batteries.router, prefix="/api")
 app.include_router(community.router, prefix="/api")
 app.include_router(weather.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")

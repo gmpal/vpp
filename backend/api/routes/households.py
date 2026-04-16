@@ -18,6 +18,15 @@ def create_household(
     crud: CrudManager = Depends(get_crud_manager),
     current_user: dict = Depends(get_current_user),
 ):
+    # Verify community ownership when community_id is provided
+    if req.community_id:
+        community = crud.get_community(
+            community_id=req.community_id,
+            manager_user_id=current_user["user_id"],
+        )
+        if not community:
+            raise HTTPException(status_code=403, detail="Community not found or access denied")
+
     household_id = f"hh_{uuid.uuid4().hex[:8]}"
     crud.create_household(
         household_id,
@@ -31,6 +40,7 @@ def create_household(
         osm_feature_id=req.osm_feature_id,
         user_id=current_user["user_id"],
         geometry=req.geometry,
+        community_id=req.community_id,
     )
 
     starting_date = datetime.now().strftime("%Y-%m-%d %H:%M")

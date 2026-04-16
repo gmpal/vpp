@@ -21,6 +21,15 @@ def add_source_with_location(
     current_user: dict = Depends(get_current_user),
 ):
     try:
+        # Verify community ownership when community_id is provided
+        if request.community_id:
+            community = crud.get_community(
+                community_id=request.community_id,
+                manager_user_id=current_user["user_id"],
+            )
+            if not community:
+                raise HTTPException(status_code=403, detail="Community not found or access denied")
+
         _, source_id = create_new_source(
             source_type=request.source_type,
             kakfa_flag=True,
@@ -30,14 +39,14 @@ def add_source_with_location(
         name = request.name or f"{request.source_type.capitalize()} {source_id}"
         db.execute(
             """
-            INSERT INTO energy_sources (source_id, type, latitude, longitude, name, household_id, user_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO energy_sources (source_id, type, latitude, longitude, name, household_id, user_id, community_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (source_id) DO UPDATE
             SET latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
                 name = EXCLUDED.name, household_id = EXCLUDED.household_id,
-                user_id = EXCLUDED.user_id
+                user_id = EXCLUDED.user_id, community_id = EXCLUDED.community_id
         """,
-            (source_id, request.source_type, request.latitude, request.longitude, name, request.household_id, current_user["user_id"]),
+            (source_id, request.source_type, request.latitude, request.longitude, name, request.household_id, current_user["user_id"], request.community_id),
         )
 
         return EnergySourceWithData(
@@ -49,6 +58,8 @@ def add_source_with_location(
             household_id=request.household_id,
             status="active",
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to create source: {e}")
         raise HTTPException(status_code=500, detail=str(e))

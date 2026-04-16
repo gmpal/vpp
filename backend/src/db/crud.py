@@ -271,14 +271,15 @@ class CrudManager:
         osm_feature_id: str = None,
         user_id: str = None,
         geometry: dict = None,
+        community_id: str = None,
     ):
         import json
 
         query = """
         INSERT INTO households (household_id, name, latitude, longitude,
                                 solar_panels, building_type, num_people, num_evs,
-                                osm_feature_id, user_id, geometry)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                osm_feature_id, user_id, geometry, community_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (household_id) DO NOTHING
         """
         self.db.execute(
@@ -287,6 +288,7 @@ class CrudManager:
                 household_id, name, latitude, longitude, solar_panels,
                 building_type, num_people, num_evs, osm_feature_id, user_id,
                 json.dumps(geometry) if geometry else None,
+                community_id,
             ),
         )
 

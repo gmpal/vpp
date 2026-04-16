@@ -29,11 +29,12 @@ class DeviceCounts(BaseModel):
 
 
 class AddSourceRequest(BaseModel):
-    source_type: str  # 'solar'
+    source_type: str  # 'solar' or 'wind'
     latitude: float
     longitude: float
     name: str | None = None
     household_id: str | None = None
+    community_id: str | None = None
 
 
 class EnergySourceWithData(BaseModel):
@@ -70,6 +71,7 @@ class HouseholdCreate(BaseModel):
     num_evs: int = 0
     osm_feature_id: Optional[str] = None
     geometry: Optional[dict] = None
+    community_id: Optional[str] = None
 
 
 class ElectricVehicle(BaseModel):
@@ -102,12 +104,41 @@ class EVOperation(BaseModel):
     duration_h: float = 1.0
 
 
+class Battery(BaseModel):
+    battery_id: str
+    household_id: str
+    name: str
+    capacity_kwh: float
+    soc_kwh: float
+    max_charge_kw: float
+    max_discharge_kw: float
+    eta: float = 0.95
+
+
+class BatteryCreate(BaseModel):
+    household_id: str
+    name: str
+    capacity_kwh: float
+    soc_kwh: float
+    max_charge_kw: float
+    max_discharge_kw: float
+    eta: float = 0.95
+
+
+class BatteryOperation(BaseModel):
+    power_kw: float
+    duration_h: float = 1.0
+
+
 class CommunitySummary(BaseModel):
     total_production: float
     total_consumption: float
     net: float
     ev_soc_total: float
     ev_soc_capacity: float
+    battery_soc_total: float = 0.0
+    battery_soc_capacity: float = 0.0
     action: str
     household_count: int
     ev_count: int
+    battery_count: int = 0

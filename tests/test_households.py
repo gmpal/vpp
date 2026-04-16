@@ -1,8 +1,11 @@
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
+from backend.api.auth import get_current_user
 from backend.api.main import app
 from backend.src.dependencies import get_crud_manager
+
+_TEST_USER = {"user_id": "test_user_global_id", "id": "test_user_global_id", "username": "test_user"}
 
 
 @pytest.fixture
@@ -13,8 +16,10 @@ def mock_crud():
 @pytest.fixture
 def client(mock_crud):
     app.dependency_overrides[get_crud_manager] = lambda: mock_crud
+    app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     yield TestClient(app)
-    app.dependency_overrides.clear()
+    app.dependency_overrides.pop(get_crud_manager, None)
+    app.dependency_overrides.pop(get_current_user, None)
 
 
 def test_list_households_empty(client, mock_crud):
