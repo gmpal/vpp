@@ -52,6 +52,35 @@ class SchemaManager:
         """
         self.db.execute(query)
 
+    def _create_communities_table(self):
+        query = """
+        CREATE TABLE IF NOT EXISTS communities (
+            community_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            manager_user_id VARCHAR(50) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+            name            VARCHAR(100) NOT NULL,
+            location_lat    FLOAT,
+            location_lon    FLOAT,
+            created_at      TIMESTAMPTZ DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ DEFAULT NOW()
+        );
+        """
+        self.db.execute(query)
+
+    def _migrate_add_community_id(self):
+        """Additive migration: add community_id to all scoped tables if missing."""
+        for table in ("households", "energy_sources", "batteries"):
+            self.db.execute(f"""
+                ALTER TABLE {table}
+                ADD COLUMN IF NOT EXISTS community_id UUID
+                REFERENCES communities(community_id) ON DELETE SET NULL;
+            """)
+        # Hypertables don't support FK constraints — add bare UUID column
+        for table in ("solar", "wind", "load", "solar_forecast", "wind_forecast", "load_forecast"):
+            self.db.execute(f"""
+                ALTER TABLE {table}
+                ADD COLUMN IF NOT EXISTS community_id UUID;
+            """)
+
     def _migrate_add_user_id(self):
         """Additive migration: add user_id FK to households and energy_sources if missing."""
         for table in ("households", "energy_sources"):
@@ -228,7 +257,8 @@ class SchemaManager:
 
     def init_all_tables(self):
         """Create all tables only if they don't already exist. Safe to call on a live DB."""
-        self._create_users_table()  # must come first — households FKs it
+        self._create_users_table()       # must come first — communities FKs it
+        self._create_communities_table() # before households — households FKs it
         # households first — energy_sources has a FK to it
         self._create_households_table()  # already uses IF NOT EXISTS
         self._try_create(self._create_energy_sources_table)
@@ -239,10 +269,11 @@ class SchemaManager:
         self._try_create(self._create_renewables_tables)
         self._try_create(self._create_renewables_forecast_tables)
         self._create_electric_vehicles_table()  # already uses IF NOT EXISTS
-        self._create_household_load_table()  # already uses IF NOT EXISTS
-        self._migrate_add_user_id()  # idempotent: ADD COLUMN IF NOT EXISTS
-        self._migrate_household_load_fk()  # idempotent: ADD CONSTRAINT IF NOT EXISTS
-        self._migrate_add_building_geometry()  # idempotent: ADD COLUMN IF NOT EXISTS
+        self._create_household_load_table()     # already uses IF NOT EXISTS
+        self._migrate_add_user_id()             # idempotent: ADD COLUMN IF NOT EXISTS
+        self._migrate_add_community_id()        # idempotent: ADD COLUMN IF NOT EXISTS
+        self._migrate_household_load_fk()       # idempotent: ADD CONSTRAINT IF NOT EXISTS
+        self._migrate_add_building_geometry()   # idempotent: ADD COLUMN IF NOT EXISTS
 
     def _drop_all_tables_except_users(self):
         """Drop all tables in public schema except the users table."""
@@ -266,7 +297,8 @@ class SchemaManager:
     def reset_all_tables(self):
         self._drop_all_tables_except_users()
 
-        self._create_users_table()  # idempotent — preserved across reset
+        self._create_users_table()       # idempotent — preserved across reset
+        self._create_communities_table() # before households — households FKs it
         # households must come before energy_sources (FK dependency)
         self._create_households_table()
         self._create_energy_sources_table()
@@ -278,6 +310,10 @@ class SchemaManager:
         self._create_renewables_forecast_tables()
         self._create_electric_vehicles_table()
         self._create_household_load_table()
+        self._migrate_add_user_id()
+        self._migrate_add_community_id()
+        self._migrate_household_load_fk()
+        self._migrate_add_building_geometry()
 
     def reset_forecast_tables(self):
         self._drop_forecasting_tables_in_public()
