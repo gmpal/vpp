@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Virtual Power Plant - Implementation & Real Data Ingestion</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/theme/black.min.css">
+    <style>
+        .reveal h1, .reveal h2, .reveal h3, .reveal h4, .reveal h5, .reveal h6 {
+            text-transform: none;
+            font-weight: bold;
+        }
+        .reveal pre { width: 100%; font-size: 0.55em; }
+        .reveal code { color: #ff6b6b; background: rgba(0,0,0,0.3); padding: 2px 6px; }
+        .reveal table { margin: auto; border-collapse: collapse; }
+        .reveal table td, .reveal table th { padding: 8px; border: 1px solid #555; }
+        .data-flow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin: 20px 0; }
+        .flow-item { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 12px 20px; border-radius: 6px; font-size: 0.9em; }
+        .arrow { color: #ff6b6b; margin: 0 5px; font-size: 1.5em; }
+        .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin: 20px 0; }
+        .card { background: rgba(102, 126, 234, 0.2); border-left: 4px solid #667eea; padding: 15px; border-radius: 4px; text-align: left; }
+        .card h4 { color: #66ff66; margin-top: 0; }
+        .highlight { background: #ff6b6b; color: white; padding: 2px 6px; border-radius: 3px; }
+        .reveal section { text-align: center; }
+        .reveal section.stack { text-align: center; }
+        .left-align { text-align: left !important; }
+        .smaller { font-size: 0.8em; }
+        .mini { font-size: 0.7em; }
+        .bold { font-weight: bold; color: #66ff66; }
+    </style>
+</head>
+<body>
+    <div class="reveal">
+        <div class="slides">
+            <!-- Title Slide -->
+            <section data-background="linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+                <h1 style="color: white; font-size: 3.5em;">Virtual Power Plant</h1>
+                <h3 style="color: #c0c0c0;">Implementation & Real Data Ingestion Architecture</h3>
+                <p style="margin-top: 40px; color: #ddd;">
+                    Containerized Microservices for Distributed Energy Optimization
+                </p>
+                <p style="margin-top: 60px; font-size: 0.8em; color: #aaa;">
+                    Click arrow keys or spacebar to navigate →
+                </p>
+            </section>
+
+            <!-- Section 1: System Overview -->
+            <section>
+                <section>
+                    <h2>System Overview</h2>
+                    <p style="margin-top: 40px; color: #ddd;">A containerized microservices ecosystem that ingests <span class="highlight">real-world renewable energy data</span> from public APIs</p>
+                    <div class="data-flow" style="margin-top: 60px;">
+                        <div class="flow-item">Public APIs</div>
+                        <div class="arrow">→</div>
+                        <div class="flow-item">Data Generators</div>
+                        <div class="arrow">→</div>
+                        <div class="flow-item">Kafka</div>
+                        <div class="arrow">→</div>
+                        <div class="flow-item">TimescaleDB</div>
+                        <div class="arrow">→</div>
+                        <div class="flow-item">ML & Optimization</div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>What Does VPP Do?</h3>
+                    <ul style="margin-top: 40px; font-size: 1.1em;">
+                        <li>📊 <strong>Streams</strong> synthetic solar/wind/load/market data via Kafka</li>
+                        <li>💾 <strong>Stores</strong> time-series data in TimescaleDB with automatic partitioning</li>
+                        <li>🤖 <strong>Trains</strong> 5 ML models via time-series cross-validation</li>
+                        <li>🔮 <strong>Forecasts</strong> 30 steps ahead using best-performing models</li>
+                        <li>⚡ <strong>Optimizes</strong> battery dispatch to minimize electricity costs</li>
+                        <li>🗺️ <strong>Visualizes</strong> on interactive map with real-time dashboards</li>
+                    </ul>
+                </section>
+            </section>
+
+            <!-- Section 2: Real Data Ingestion -->
+            <section>
+                <section data-background="linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+                    <h2 style="color: white;">Real Data Ingestion from Public APIs</h2>
+                    <p style="margin-top: 40px; color: #c0c0c0;">Three public data sources power the system</p>
+                </section>
+
+                <section>
+                    <h3>Solar Data: pvlib Integration</h3>
+                    <div class="card left-align" style="font-size: 0.95em; margin-top: 30px;">
+                        <h4>☀️ NREL PVGIS Historical Weather Data</h4>
+                        <p><strong>Data provided:</strong></p>
+                        <ul style="font-size: 0.9em; margin-top: 10px;">
+                            <li>Solar irradiance (direct, diffuse, global horizontal)</li>
+                            <li>Air temperature & humidity</li>
+                            <li>Azimuth & zenith angles for PV tracking</li>
+                        </ul>
+                        <p style="margin-top: 15px;"><strong>How it works:</strong></p>
+                        <p style="font-size: 0.9em;">User places source on map → captures lat/lon → <code>pvlib</code> fetches real historical weather for that location → generates realistic 30-day solar production curves</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Wind Data: windpowerlib Integration</h3>
+                    <div class="card left-align" style="font-size: 0.95em; margin-top: 30px;">
+                        <h4>💨 ERA5 Reanalysis Weather Data</h4>
+                        <p><strong>Data provided:</strong></p>
+                        <ul style="font-size: 0.9em; margin-top: 10px;">
+                            <li>Wind speed at hub height (10m, 100m)</li>
+                            <li>Wind direction & surface roughness</li>
+                            <li>Temperature & pressure profiles</li>
+                        </ul>
+                        <p style="margin-top: 15px;"><strong>How it works:</strong></p>
+                        <p style="font-size: 0.9em;">Coordinates + standard turbine model parameters → <code>windpowerlib</code> calculates power curves → 30-day realistic wind profiles</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Market Data: NYISO/PJM APIs</h3>
+                    <div class="card left-align" style="font-size: 0.95em; margin-top: 30px;">
+                        <h4>💡 Real-Time Electricity Market Prices</h4>
+                        <p><strong>Data provided:</strong></p>
+                        <ul style="font-size: 0.9em; margin-top: 10px;">
+                            <li>Day-ahead LMP (Locational Marginal Pricing)</li>
+                            <li>Real-time pricing updates</li>
+                            <li>Generation costs & reserve prices</li>
+                        </ul>
+                        <p style="margin-top: 15px;"><strong>How it works:</strong></p>
+                        <p style="font-size: 0.9em;">Market prices drive optimization: when prices are low → charge battery; when prices are high → discharge battery or sell to grid</p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Data Ingestion Pipeline</h3>
+                    <div style="text-align: left; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 8px; font-size: 0.85em;">
+                        <p><strong style="color: #66ff66;">db-init Service (runs once at startup):</strong></p>
+                        <ol style="margin-top: 15px; line-height: 1.8;">
+                            <li>Reads user-placed source coordinates from map</li>
+                            <li>Calls pvlib API with lat/lon → fetches solar data</li>
+                            <li>Calls windpowerlib API with lat/lon → fetches wind data</li>
+                            <li>Calls NYISO/PJM API → fetches real market prices</li>
+                            <li>Generates synthetic 30-day profiles matching real data</li>
+                            <li><strong>Streams to Kafka topics</strong> at 5-minute intervals</li>
+                        </ol>
+                    </div>
+                </section>
+            </section>
+
+            <!-- Section 3: Microservices Architecture -->
+            <section>
+                <section data-background="linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+                    <h2 style="color: white;">Microservices Architecture</h2>
+                    <p style="margin-top: 40px; color: #c0c0c0;">Independent services communicating via REST & Kafka</p>
+                </section>
+
+                <section>
+                    <h3>Always-Running Services</h3>
+                    <div class="three-col" style="font-size: 0.85em;">
+                        <div class="card">
+                            <h4>🔧 Backend (FastAPI)</h4>
+                            <p>REST API server on port 8000</p>
+                            <p style="color: #999; font-size: 0.9em;">Serves historical/forecast data, runs PuLP optimization, manages battery state</p>
+                        </div>
+                        <div class="card">
+                            <h4>⚛️ Frontend (React)</h4>
+                            <p>Interactive map on port 3000</p>
+                            <p style="color: #999; font-size: 0.9em;">Click-to-place sources, real-time dashboards, optimization visualizations</p>
+                        </div>
+                        <div class="card">
+                            <h4>📡 Consumer (Kafka)</h4>
+                            <p>Listens to 4 topics</p>
+                            <p style="color: #999; font-size: 0.9em;">Persists solar, wind, load, market streams to TimescaleDB</p>
+                        </div>
+                    </div>
+                    <div class="three-col" style="font-size: 0.85em;">
+                        <div class="card">
+                            <h4>🗄️ TimescaleDB</h4>
+                            <p>Time-series database</p>
+                            <p style="color: #999; font-size: 0.9em;">Hypertables auto-partitioned by time, compressed storage</p>
+                        </div>
+                        <div class="card">
+                            <h4>🎥 Kafka & Zookeeper</h4>
+                            <p>Message broker</p>
+                            <p style="color: #999; font-size: 0.9em;">Topics: solar, wind, load, market (5-min intervals)</p>
+                        </div>
+                        <div class="card">
+                            <h4>📊 MLflow</h4>
+                            <p>Model registry</p>
+                            <p style="color: #999; font-size: 0.9em;">Tracks models, versions, artifacts, metrics</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>On-Demand Services (Profile: task)</h3>
+                    <div style="margin-top: 40px;">
+                        <div class="card left-align" style="margin-bottom: 20px; font-size: 0.9em;">
+                            <h4>🤖 Training Pipeline</h4>
+                            <p>Runs time-series cross-validation on accumulated historical data</p>
+                            <p style="color: #999; margin-top: 8px;">Tests 5 models: Random Forest, ARIMA, Prophet, MLP (PyTorch), Temporal Fusion Transformer</p>
+                            <p style="color: #999; margin-top: 8px;">Registers best model per dataset-source pair in MLflow Registry</p>
+                        </div>
+                        <div class="card left-align" style="font-size: 0.9em;">
+                            <h4>🔮 Inference Pipeline</h4>
+                            <p>Loads trained models from MLflow</p>
+                            <p style="color: #999; margin-top: 8px;">Generates 30 steps ahead (150 minutes) with 5-min resolution</p>
+                            <p style="color: #999; margin-top: 8px;">Writes forecasts (yhat) + confidence intervals to forecast hypertables</p>
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <!-- Section 4: Data Flow -->
+            <section>
+                <section data-background="linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+                    <h2 style="color: white;">End-to-End Data Flow</h2>
+                    <p style="margin-top: 40px; color: #c0c0c0;">From user action to optimized dispatch</p>
+                </section>
+
+                <section>
+                    <h3>Step-by-Step Journey</h3>
+                    <ol style="text-align: left; font-size: 0.85em; line-height: 1.9; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 8px;">
+                        <li><strong style="color: #66ff66;">1. User places source on map</strong> (captures coordinates)</li>
+                        <li><strong style="color: #66ff66;">2. db-init fetches real API data</strong> using exact coordinates</li>
+                        <li><strong style="color: #66ff66;">3. Synthetic profiles generated</strong> (30-day realistic curves)</li>
+                        <li><strong style="color: #66ff66;">4. Kafka producers stream</strong> to 4 topics at 5-min intervals</li>
+                        <li><strong style="color: #66ff66;">5. Consumer ingests & persists</strong> to TimescaleDB (compressed, partitioned)</li>
+                        <li><strong style="color: #66ff66;">6. Training pipeline runs CV</strong> on accumulated data, compares models</li>
+                        <li><strong style="color: #66ff66;">7. Best models registered</strong> in MLflow with version tracking</li>
+                        <li><strong style="color: #66ff66;">8. Inference generates forecasts</strong> (30 steps, 5-min resolution)</li>
+                        <li><strong style="color: #66ff66;">9. Backend solves optimization</strong> problem for battery dispatch</li>
+                        <li><strong style="color: #66ff66;">10. Frontend displays</strong> historical + forecasted data & recommendations</li>
+                    </ol>
+                </section>
+            </section>
+
+            <!-- Section 5: Key Implementation -->
+            <section>
+                <section data-background="linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+                    <h2 style="color: white;">Key Implementation Details</h2>
+                    <p style="margin-top: 40px; color: #c0c0c0;">Database, Optimization & ML Specifics</p>
+                </section>
+
+                <section>
+                    <h3>TimescaleDB Schema</h3>
+                    <div style="text-align: left; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 8px; font-size: 0.85em; margin-top: 30px;">
+                        <p><strong style="color: #66ff66;">Data Tables (Hypertables):</strong></p>
+                        <ul style="margin: 10px 0 20px 20px; font-size: 0.95em;">
+                            <li><code>solar</code>, <code>wind</code> — with <code>source_id</code> (multiple generators)</li>
+                            <li><code>load</code>, <code>market</code> — no <code>source_id</code> (single aggregate)</li>
+                            <li>Columns: <code>timestamp</code> (partitioned), <code>value</code>, metadata</li>
+                        </ul>
+                        <p><strong style="color: #66ff66;">Forecast Tables:</strong></p>
+                        <ul style="margin: 10px 0 20px 20px; font-size: 0.95em;">
+                            <li><code>solar_forecast</code>, <code>wind_forecast</code>, etc.</li>
+                            <li>Stores <code>yhat</code> (predicted value) + confidence intervals</li>
+                        </ul>
+                        <p><strong style="color: #66ff66;">Battery Table:</strong></p>
+                        <ul style="margin: 10px 0 0px 20px; font-size: 0.95em;">
+                            <li><code>battery_state</code> — SOC, charge_rate, discharge_rate per battery_id</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Optimization: PuLP Linear Programming</h3>
+                    <div style="text-align: left; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 8px; font-size: 0.8em; margin-top: 30px;">
+                        <p style="color: #66ff66; margin-bottom: 15px;"><strong>Objective (minimize cost):</strong></p>
+                        <p style="font-family: monospace; background: #1a1a1a; padding: 10px; border-radius: 4px; margin: 10px 0;">
+                            Σ<sub>t</sub> price[t] × (grid_buy[t] - grid_sell[t])
+                        </p>
+                        <p style="color: #66ff66; margin: 15px 0 10px 0;"><strong>Subject to constraints:</strong></p>
+                        <ul style="margin: 10px 0px 0px 20px; line-height: 1.6;">
+                            <li><strong>SOC Dynamics:</strong> <code>SOC(t) = SOC(t-1) + η×Charge(t) - Discharge(t)</code></li>
+                            <li><strong>Grid Balance:</strong> <code>solar + wind + Charge - Discharge = load + grid_sell</code></li>
+                            <li><strong>Buy/Sell Exclusive:</strong> Big-M formulation with binary variable</li>
+                            <li><strong>Battery Limits:</strong> Min/max SOC, max charge/discharge rate</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>ML Pipeline: Model Training & Registry</h3>
+                    <div style="text-align: left; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 8px; font-size: 0.85em; margin-top: 30px;">
+                        <p><strong style="color: #66ff66;">Models Tested:</strong></p>
+                        <ul style="margin: 10px 0 20px 20px; font-size: 0.95em;">
+                            <li>Random Forest (scikit-learn)</li>
+                            <li>ARIMA (auto d parameter)</li>
+                            <li>Prophet (Facebook)</li>
+                            <li>MLP (PyTorch neural network)</li>
+                            <li>Temporal Fusion Transformer (deep learning)</li>
+                        </ul>
+                        <p><strong style="color: #66ff66;">Validation Strategy:</strong></p>
+                        <ul style="margin: 10px 0 20px 20px; font-size: 0.95em;">
+                            <li>Time-series cross-validation (anchored forward chaining)</li>
+                            <li>Metric: MSE (Mean Squared Error)</li>
+                        </ul>
+                        <p><strong style="color: #66ff66;">MLflow Registry:</strong></p>
+                        <ul style="margin: 10px 0 0px 20px; font-size: 0.95em;">
+                            <li>Model names: <code>Best_solar_010780_Model</code>, <code>Best_load_Model</code></li>
+                            <li>Artifacts: Pickle files (not native sklearn logging)</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+
+            <!-- Section 6: Deployment -->
+            <section>
+                <section data-background="linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+                    <h2 style="color: white;">Deployment & Docker Profiles</h2>
+                </section>
+
+                <section>
+                    <h3>Startup Sequence</h3>
+                    <div style="text-align: left; background: rgba(0,0,0,0.3); padding: 20px; border-radius: 8px; font-size: 0.85em; margin-top: 30px;">
+                        <p style="margin-bottom: 15px;"><strong style="color: #66ff66;">1. Start infrastructure:</strong></p>
+                        <p style="font-family: monospace; background: #1a1a1a; padding: 8px; border-radius: 4px; margin: 5px 0;">
+                            docker-compose up -d timescaledb zookeeper kafka mlflow
+                        </p>
+                        <p style="margin-bottom: 15px; margin-top: 15px;"><strong style="color: #66ff66;">2. Start consumer:</strong></p>
+                        <p style="font-family: monospace; background: #1a1a1a; padding: 8px; border-radius: 4px; margin: 5px 0;">
+                            docker-compose up -d consumer
+                        </p>
+                        <p style="margin-bottom: 15px; margin-top: 15px;"><strong style="color: #66ff66;">3. Initialize & stream data:</strong></p>
+                        <p style="font-family: monospace; background: #1a1a1a; padding: 8px; border-radius: 4px; margin: 5px 0;">
+                            docker-compose --profile init up db-init
+                        </p>
+                        <p style="margin-bottom: 15px; margin-top: 15px;"><strong style="color: #66ff66;">4. Start application:</strong></p>
+                        <p style="font-family: monospace; background: #1a1a1a; padding: 8px; border-radius: 4px; margin: 5px 0;">
+                            docker-compose up -d backend frontend
+                        </p>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Docker Compose Profiles</h3>
+                    <div class="three-col" style="font-size: 0.85em;">
+                        <div class="card">
+                            <h4>Default Profile</h4>
+                            <p style="font-size: 0.9em;">Always-running:</p>
+                            <ul style="font-size: 0.85em;">
+                                <li>backend</li>
+                                <li>frontend</li>
+                                <li>consumer</li>
+                                <li>infrastructure</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>Init Profile</h4>
+                            <p style="font-size: 0.9em;"><code>--profile init</code></p>
+                            <ul style="font-size: 0.85em;">
+                                <li>db-init</li>
+                                <li>Run once</li>
+                                <li>Generates & streams data</li>
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h4>Task Profile</h4>
+                            <p style="font-size: 0.9em;"><code>--profile task</code></p>
+                            <ul style="font-size: 0.85em;">
+                                <li>training</li>
+                                <li>inference</li>
+                                <li>On-demand</li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <section>
+                    <h3>Access Points</h3>
+                    <div style="margin-top: 40px;">
+                        <div class="card left-align" style="margin-bottom: 20px;">
+                            <h4>🗺️ Interactive Map</h4>
+                            <p style="font-family: monospace; color: #66ff66;">http://localhost:3000</p>
+                            <p style="color: #999; font-size: 0.9em;">Click anywhere to place solar/wind sources</p>
+                        </div>
+                        <div class="card left-align" style="margin-bottom: 20px;">
+                            <h4>📚 API Documentation</h4>
+                            <p style="font-family: monospace; color: #66ff66;">http://localhost:8000/docs</p>
+                            <p style="color: #999; font-size: 0.9em;">FastAPI Swagger UI with all endpoints</p>
+                        </div>
+                        <div class="card left-align">
+                            <h4>🤖 MLflow Registry</h4>
+                            <p style="font-family: monospace; color: #66ff66;">http://localhost:5000</p>
+                            <p style="color: #999; font-size: 0.9em;">View all trained models, versions, metrics</p>
+                        </div>
+                    </div>
+                </section>
+            </section>
+
+            <!-- Section 7: Conclusion -->
+            <section data-background="linear-gradient(135deg, #667eea 0%, #764ba2 100%)">
+                <h2 style="color: white;">Key Takeaways</h2>
+                <ul style="margin-top: 50px; font-size: 1.1em; color: #ddd; text-align: left; display: inline-block;">
+                    <li style="margin: 20px 0;"><span class="highlight">Real data ingestion</span> from pvlib, windpowerlib, NYISO/PJM APIs</li>
+                    <li style="margin: 20px 0;"><span class="highlight">Microservices architecture</span> with Kafka streaming & TimescaleDB storage</li>
+                    <li style="margin: 20px 0;"><span class="highlight">ML pipeline</span> with 5-model comparison & MLflow registry</li>
+                    <li style="margin: 20px 0;"><span class="highlight">PuLP optimization</span> for battery dispatch minimizing electricity costs</li>
+                    <li style="margin: 20px 0;"><span class="highlight">Interactive visualization</span> on Leaflet map with real-time dashboards</li>
+                </ul>
+                <p style="margin-top: 60px; color: #aaa;">🔗 Integrated • 📊 Real-time • 🚀 Scalable</p>
+            </section>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/reveal.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.5.0/plugin/notes/notes.min.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            transition: 'slide',
+            transitionSpeed: 'default',
+            backgroundTransition: 'fade',
+            width: '100%',
+            height: '100%',
+            margin: 0.1,
+            minScale: 0.2,
+            maxScale: 2.0,
+            plugins: [ RevealNotes ]
+        });
+    </script>
+</body>
+</html>
