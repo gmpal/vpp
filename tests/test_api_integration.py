@@ -4,15 +4,18 @@ import psycopg2
 import pandas as pd
 from backend.api.main import app
 from backend.api.routes.batteries import router as batteries
-from backend.api.auth import create_access_token
+from backend.api.auth import create_access_token, get_current_user
 from backend.src.db.crud import CrudManager
 from backend.src.db.connection import DatabaseManager
 
 
-# TestClient fixture
+# TestClient fixture with auth bypass
 @pytest.fixture(scope="module")
 def client():
-    return TestClient(app)
+    # Set up auth bypass for integration tests
+    app.dependency_overrides[get_current_user] = lambda: {"user_id": "test_user_id", "id": "test_user_id", "username": "testuser"}
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 @pytest.fixture
 def auth_headers(schema_manager):
