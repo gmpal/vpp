@@ -9,7 +9,10 @@ Prerequisites:
   - TimescaleDB running and initialised (db-init completed at least once)
 
 Run:
-  pytest tests/test_logical_questionnaire.py -v
+  pytest tests/test_logical_questionnaire.py -v -m live_api
+
+OR without live_api to skip these tests:
+  pytest tests/test_logical_questionnaire.py --ignore=tests/test_logical_questionnaire.py
 """
 
 import time
@@ -17,6 +20,8 @@ import uuid
 
 import pytest
 import requests
+
+pytestmark = pytest.mark.live_api
 
 BASE = "http://localhost:8000/api"
 
