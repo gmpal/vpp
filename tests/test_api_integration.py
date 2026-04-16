@@ -9,13 +9,12 @@ from backend.src.db.crud import CrudManager
 from backend.src.db.connection import DatabaseManager
 
 
-# TestClient fixture with auth bypass
+# TestClient fixture - uses conftest.py's session-scoped bypass_auth
 @pytest.fixture(scope="module")
-def client():
-    # Set up auth bypass for integration tests
-    app.dependency_overrides[get_current_user] = lambda: {"user_id": "test_user_id", "id": "test_user_id", "username": "testuser"}
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+def client(bypass_auth):
+    # Auth bypass is already set up by conftest.py's session-scoped bypass_auth fixture
+    # Use the same client for all integration tests
+    return TestClient(app)
 
 @pytest.fixture
 def auth_headers(schema_manager):
