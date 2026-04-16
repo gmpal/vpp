@@ -142,10 +142,8 @@ def kafka_consume_centralized():
         - Extracts topic, source_id, timestamp, and data from each message
         - Converts timestamp to a pandas datetime object
         - Saves the extracted information to a database using save_to_db()
-    Prints:
-        - A message indicating the receipt of a message, including the topic, source_id, and timestamp
-    Note:
-        - Assumes that the message value contains a "data" field holding the value(s) to be saved.
+    Topics (legacy CSV-replay): solar, load, market
+    Topics (real-time device simulator): device_readings
     """
     bs = _get_server_info()
     print("Using bootstrap servers:", bs, flush=True)
@@ -153,9 +151,10 @@ def kafka_consume_centralized():
         "solar",
         "load",
         "market",
+        "device_readings",
         bootstrap_servers=bs,
         auto_offset_reset="earliest",
-        group_id="test-group",
+        group_id="community-consumer",
         value_deserializer=lambda x: json.loads(x.decode("utf-8")),
     )
 
@@ -164,22 +163,46 @@ def kafka_consume_centralized():
 
     for msg in consumer:
         topic = msg.topic
-
-        # Extract message details
         message = msg.value
-        source_id = message.get("source_id")
-        timestamp = message.get("timestamp")
-        value = message.get("data")  # Assuming 'data' holds the value(s)
 
-        print(f"Received {topic} message from {source_id} at {timestamp}")
+        if topic == "device_readings":
+            _handle_device_reading(db_manager, message)
+        else:
+            # Legacy CSV-replay topics
+            source_id = message.get("source_id")
+            timestamp = message.get("timestamp")
+            value = message.get("data")
+            print(f"Received {topic} message from {source_id} at {timestamp}")
+            if timestamp.endswith("Z"):
+                timestamp = timestamp[:-1] + "+00:00"
+            time_obj = datetime.fromisoformat(timestamp)
+            crud.save_to_db(topic, time_obj, source_id, value)
 
-        # Assuming the timestamp is in ISO format like "2025-10-29T14:30:00Z"
-        # The 'Z' for Zulu/UTC might need to be handled if present.
-        if timestamp.endswith("Z"):
-            timestamp = timestamp[:-1] + "+00:00"
-        time_obj = datetime.fromisoformat(timestamp)
 
-        crud.save_to_db(topic, time_obj, source_id, value)
+def _handle_device_reading(db_manager, message: dict) -> None:
+    """Route a device_readings message to the correct hypertable."""
+    device_type = message.get("device_type")  # solar, wind, load
+    source_id = message.get("source_id")
+    community_id = message.get("community_id")
+    value = message.get("value", 0.0)
+    timestamp = message.get("timestamp", "")
+
+    print(f"[device] {device_type} {source_id} community={community_id} value={value:.3f}")
+
+    if timestamp.endswith("Z"):
+        timestamp = timestamp[:-1] + "+00:00"
+    time_obj = datetime.fromisoformat(timestamp)
+
+    if device_type in ("solar", "wind"):
+        db_manager.execute(
+            f"INSERT INTO {device_type} (time, source_id, value, community_id) VALUES (%s, %s, %s, %s)",
+            (time_obj, source_id, value, community_id),
+        )
+    elif device_type == "load":
+        db_manager.execute(
+            "INSERT INTO load (time, source_id, value, community_id) VALUES (%s, %s, %s, %s)",
+            (time_obj, source_id, value, community_id),
+        )
 
 
 if __name__ == "__main__":
