@@ -8,6 +8,7 @@ __pycache__/
 *.so
 trash/
 data/
+data_fluvius/
 airflow-data/
 mlruns/
 artifacts/
@@ -169,3 +170,25 @@ project_gantt_chart.pdf
 frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
+
+# Literature review (large, kept local)
+literature/
+
+# Local agent / tooling state
+.aider.chat.history.md
+.aider.input.history
+.aider.tags.cache.v4/
+.claude-flow/
+claude-flow.config.json
+.claw/
+.swarm/
+.mcp.json
+ruvector.db
+
+# Generated dumps (see merge_codebase.py precedent)
+dump_non_ui.py
+codebase_dump_*.txt
+
+# Test / coverage output
+frontend/coverage/
+test-results/
