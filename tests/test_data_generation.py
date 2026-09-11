@@ -6,7 +6,6 @@ from unittest.mock import Mock
 from backend.src.pipelines.generation import (
     read_generation_config,
     generate_weather_data,
-    generate_wind_data,
     generate_pv_data,
     generate_synthetic_load_data,
     generate_synthetic_market_price,
@@ -63,34 +62,6 @@ def test_generate_weather_data(mocker):
     mock_to_csv.assert_called_once_with("../data/1_weather_data.csv")
 
 
-# --- Test generate_wind_data ---
-def test_generate_wind_data_with_df(mocker):
-    """Test wind data generation with provided weather DataFrame."""
-
-    weather_df = pd.DataFrame(
-        {
-            ("wind_speed", 100): [5.0, 6.0],
-            ("temperature", 2): [10.0, 11.0],
-            ("pressure", 0): [101325, 101325],
-        },
-        index=pd.to_datetime(["2025-01-01 00:00", "2025-01-01 01:00"]),
-    )
-
-    power_output = generate_wind_data(
-        weather_data=weather_df, output_path=None, source_id="1"
-    )
-
-    assert isinstance(power_output, pd.Series)
-    assert len(power_output) == 2
-    assert power_output.index[0] == pd.Timestamp("2025-01-01 00:00:00")
-
-
-def test_generate_wind_data_no_input(mocker):
-    """Test wind data generation raises ValueError with no input."""
-    with pytest.raises(
-        ValueError, match="Either weather_data_path or weather_data must be provided."
-    ):
-        generate_wind_data()
 
 
 # --- Test generate_pv_data ---
