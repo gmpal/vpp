@@ -1,9 +1,19 @@
-import pytest
-import psycopg2
-from backend.src.db import DatabaseManager, CrudManager, SchemaManager
-
-
 import os
+
+import dotenv
+import pytest
+
+# Load .env from repo root so test DB config matches the running instance
+dotenv.load_dotenv()
+
+# These imports are only needed for integration tests (live DB).
+# Guard them so unit tests can be collected without any infrastructure.
+try:
+    import psycopg2
+    from backend.src.db import DatabaseManager, CrudManager, SchemaManager
+    _DB_AVAILABLE = True
+except ImportError:
+    _DB_AVAILABLE = False
 
 DB_CONFIG = {
     "dbname": os.environ.get("POSTGRES_DB", "postgres"),
@@ -17,7 +27,12 @@ DB_CONFIG = {
 @pytest.fixture(scope="module")
 def db_connection():
     """Set up a connection to a Dockerized TimescaleDB instance."""
-    conn = psycopg2.connect(**DB_CONFIG)
+    if not _DB_AVAILABLE:
+        pytest.skip("psycopg2 / backend DB modules not installed")
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+    except psycopg2.OperationalError as e:
+        pytest.skip(f"Database not accessible: {e}")
     with conn.cursor() as cursor:
         cursor.execute("CREATE EXTENSION IF NOT EXISTS timescaledb;")
     conn.commit()
@@ -42,7 +57,7 @@ def db_connection():
 def db_manager(db_connection):
     """Provide a DatabaseManager instance using the test connection."""
     db = DatabaseManager()
-    db.connect = lambda: db_connection  # Override connect method
+    db.connect = lambda: db_connection
     return db
 
 
@@ -51,7 +66,7 @@ def schema_manager(db_manager):
     """Set up the schema using SchemaManager."""
     schema_mgr = SchemaManager(db_manager)
     try:
-        schema_mgr.reset_all_tables()  # Create all tables and hypertables
+        schema_mgr.reset_all_tables()
     except Exception as e:
         print(f"Schema setup failed: {e}")
         raise
@@ -67,21 +82,14 @@ def crud_manager(db_manager):
 @pytest.fixture
 def cleanup(db_manager):
     """Clean up all tables after each test."""
-    yield  # Run the test
+    yield
     tables = [
-        "solar",
-        "load",
-        "market",
-        "solar_forecast",
-        "load_forecast",
-        "market_forecast",
-        "energy_sources",
-        "electric_vehicles",
-        "households",
-        "household_load",
+        "solar", "load", "market", "solar_forecast", "load_forecast",
+        "market_forecast", "energy_sources", "electric_vehicles",
+        "households", "household_load",
     ]
     for table in tables:
         try:
             db_manager.execute(f"DELETE FROM {table};")
-        except psycopg2.errors.UndefinedTable:
-            continue  # Skip if table doesn’t exist
+        except Exception:
+            continue

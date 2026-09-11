@@ -19,6 +19,8 @@ from unittest.mock import patch
 
 from backend.api.main import app
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture(scope="module")
 def client():

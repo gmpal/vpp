@@ -10,6 +10,8 @@ And stop it afterwards with
 import pytest
 import pandas as pd
 
+pytestmark = pytest.mark.integration
+
 
 def test_schema_creation(db_manager, schema_manager, cleanup):
     """Test that all expected tables and hypertables are created."""
