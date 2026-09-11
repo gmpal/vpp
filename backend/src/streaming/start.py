@@ -33,6 +33,11 @@ def dump_csv_folder_to_db_and_start_streaming(folder_path: str):
         source_id = name_no_ext.split("_")[0]  # ->  "0GFA4K"
         source = name_no_ext.split("_")[1]  # -> "solar"
 
+        # Skip CSV files for sources that are not active (no table created for them)
+        if source not in db_manager.renewables and source not in ("load", "market"):
+            print(f"Skipping '{filename}' — source '{source}' has no table.")
+            continue
+
         # Load is derived from households — skip any legacy load CSVs
         if source == "load":
             continue
@@ -85,10 +90,14 @@ def dump_csv_folder_to_db_and_start_streaming(folder_path: str):
         for t in data_tuples:
             db_manager.execute(query, t)
 
-        print(f"Inserted {len(data_tuples)} rows from '{filename}' into table '{table_name}'.")
+        print(
+            f"Inserted {len(data_tuples)} rows from '{filename}' into table '{table_name}'."
+        )
 
         new_producer_bundle = (source, source_id, df_to_stream)
-        new_producer_process = Process(target=kafka_produce, args=(new_producer_bundle, 60))
+        new_producer_process = Process(
+            target=kafka_produce, args=(new_producer_bundle, 60)
+        )
         new_producer_process.start()
 
 

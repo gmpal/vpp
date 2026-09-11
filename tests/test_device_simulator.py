@@ -36,7 +36,8 @@ def test_solar_output_is_non_negative(solar_sim):
     solar_sim.tick = 0
     for _ in range(20):
         solar_sim.tick += 100
-        assert solar_sim._solar() >= 0.0
+        value, _ = run_async(solar_sim._solar())
+        assert value >= 0.0
 
 
 def test_solar_output_low_at_night(solar_sim):
@@ -44,26 +45,29 @@ def test_solar_output_low_at_night(solar_sim):
     solar_sim.tick = 0
     # With noise std=0.05 * capacity(10kW), output is clamped to ≥0
     # The factor at midnight is 0, so mean output = max(0, noise) ≈ 0
-    readings = [solar_sim._solar() for _ in range(30)]
+    readings = [run_async(solar_sim._solar())[0] for _ in range(30)]
     assert sum(readings) / len(readings) < 1.0  # average near zero at midnight
 
 
 def test_solar_output_positive_at_noon(solar_sim):
     # tick=43200 → hour=12 (noon)
     solar_sim.tick = 43200
-    assert solar_sim._solar() > 0.0
+    value, _ = run_async(solar_sim._solar())
+    assert value > 0.0
 
 
 def test_wind_output_is_non_negative(wind_sim):
     for i in range(50):
         wind_sim.tick = i * 10
-        assert wind_sim._wind() >= 0.0
+        value, _ = run_async(wind_sim._wind())
+        assert value >= 0.0
 
 
 def test_wind_output_bounded_by_capacity(wind_sim):
     for i in range(100):
         wind_sim.tick = i
-        assert wind_sim._wind() <= wind_sim.capacity_kw * 1.5  # noise can exceed briefly
+        value, _ = run_async(wind_sim._wind())
+        assert value <= wind_sim.capacity_kw * 1.5  # noise can exceed briefly
 
 
 def test_load_baseline_is_positive(load_sim):
