@@ -1,4 +1,4 @@
-.PHONY: help init up down logs restart clean test test-unit test-int test-db-up test-db-down
+.PHONY: help init up down logs restart clean test test-unit test-int test-db-up test-db-down console
 
 help:
 	@echo "Usage: make <target>"
@@ -19,6 +19,7 @@ help:
 	@echo "  test          Start the disposable test DB and run the whole backend suite"
 	@echo "  test-db-up    Start the disposable test DB on port 55432"
 	@echo "  test-db-down  Remove the disposable test DB"
+	@echo "  console       Serve the backend API test console on http://localhost:8090"
 
 # ---------------------------------------------------------------------------
 # Infrastructure
@@ -72,3 +73,10 @@ test-int: test-db-up
 
 test: test-db-up
 	pytest
+
+# ---------------------------------------------------------------------------
+# Dev tools
+# ---------------------------------------------------------------------------
+
+console:
+	python -m http.server 8090 --bind 127.0.0.1 --directory tools/api-console

@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VPP API Console</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2330; --muted:#6b7280; --line:#e3e6eb; --accent:#2563eb; --ok:#15803d; --err:#b91c1c; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg); }
+  header { position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 16px; background:#111827; color:#fff; }
+  header h1 { font-size:15px; margin:0 12px 0 0; }
+  header input { width:220px; }
+  #health { font-weight:600; }
+  main { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:12px; padding:12px 16px; }
+  @media (max-width: 1000px) { main { grid-template-columns:1fr; } }
+  section { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:10px 12px; margin-bottom:12px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; margin:0 0 8px; color:var(--muted); }
+  .row { display:flex; flex-wrap:wrap; gap:6px; align-items:end; margin-bottom:6px; }
+  label { display:flex; flex-direction:column; font-size:11px; color:var(--muted); }
+  input, select { font:inherit; padding:3px 6px; border:1px solid var(--line); border-radius:4px; min-width:0; }
+  input[type=number] { width:80px; }
+  button { font:inherit; padding:4px 10px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:4px; cursor:pointer; }
+  button.secondary { background:#fff; color:var(--accent); }
+  button.danger { border-color:var(--err); background:#fff; color:var(--err); }
+  button:disabled { opacity:.5; cursor:wait; }
+  .table-wrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  th, td { text-align:left; padding:3px 6px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th { color:var(--muted); font-weight:600; }
+  td.actions { display:flex; gap:4px; }
+  td.actions button { padding:1px 6px; font-size:11px; }
+  .chart { position:relative; height:260px; }
+  .chart:not(.has-data) { display:none; }
+  .kv { display:grid; grid-template-columns:max-content 1fr; gap:2px 12px; }
+  .kv span:nth-child(odd) { color:var(--muted); }
+  aside { position:sticky; top:52px; align-self:start; max-height:calc(100vh - 64px); display:flex; flex-direction:column; }
+  #log { overflow:auto; flex:1; font:11px/1.4 ui-monospace, Consolas, monospace; }
+  .entry { border-bottom:1px solid var(--line); padding:4px 0; }
+  .entry summary { cursor:pointer; }
+  .entry pre { margin:4px 0 0; white-space:pre-wrap; word-break:break-all; max-height:300px; overflow:auto; background:#f3f4f6; padding:4px; }
+  .s-ok { color:var(--ok); font-weight:600; } .s-err { color:var(--err); font-weight:600; }
+  .hint { color:var(--muted); font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>VPP API Console</h1>
+  <label style="color:#cbd5e1">Backend URL <input id="base" value="http://localhost:8000"></label>
+  <button onclick="checkHealth()">Health</button>
+  <span id="health"></span>
+  <button class="secondary" onclick="refreshAll()">Refresh lists</button>
+</header>
+
+<main>
+<div>
+  <section>
+    <h2>Database</h2>
+    <div class="row">
+      <button onclick="call('POST','/api/admin/init-db')">Init DB (create tables, seed market)</button>
+      <button class="danger" onclick="confirm('Drop and recreate ALL tables?') && call('POST','/api/admin/reset-db').then(refreshAll)">Reset DB</button>
+      <button class="secondary" onclick="call('POST','/api/data/generate-system-data')">Generate load + market data</button>
+      <span class="hint">reset and generate insert row by row: expect a few minutes</span>
+    </div>
+    <div class="row">
+      <button class="secondary" onclick="showDeviceStatus()">Device status</button>
+      <button class="secondary" onclick="showSummary()">Community summary</button>
+    </div>
+    <div id="summary" class="kv"></div>
+  </section>
+
+  <section>
+    <h2>Communities</h2>
+    <div class="row">
+      <label>Name <input id="c-name" value="Test community"></label>
+      <label>Lat <input id="c-lat" type="number" step="0.01" value="50.85"></label>
+      <label>Lon <input id="c-lon" type="number" step="0.01" value="4.35"></label>
+      <button onclick="createCommunity()">Create</button>
+      <button class="secondary" onclick="loadCommunities()">List</button>
+    </div>
+    <div id="communities" class="table-wrap"></div>
+  </section>
+
+  <section>
+    <h2>Households</h2>
+    <div class="row">
+      <label>Name <input id="h-name" value="House 1"></label>
+      <label>Lat <input id="h-lat" type="number" step="0.01" value="50.85"></label>
+      <label>Lon <input id="h-lon" type="number" step="0.01" value="4.35"></label>
+      <label>Panels <input id="h-panels" type="number" value="4"></label>
+      <label>People <input id="h-people" type="number" value="3"></label>
+      <label>EVs <input id="h-evs" type="number" value="1"></label>
+      <label>Community <select id="h-community" class="community-select"></select></label>
+      <button onclick="createHousehold()">Create</button>
+      <button class="secondary" onclick="loadHouseholds()">List</button>
+    </div>
+    <div class="hint">Creating a household generates 30 days of hourly load.</div>
+    <div id="households" class="table-wrap"></div>
+  </section>
+
+  <section>
+    <h2>Energy sources</h2>
+    <div class="row">
+      <label>Type <select id="s-type"><option>solar</option></select></label>
+      <label>Name <input id="s-name" placeholder="optional"></label>
+      <label>Lat <input id="s-lat" type="number" step="0.01" value="50.85"></label>
+      <label>Lon <input id="s-lon" type="number" step="0.01" value="4.35"></label>
+      <label>Household <select id="s-household" class="household-select"></select></label>
+      <label>Community <select id="s-community" class="community-select"></select></label>
+      <button onclick="createSource()">Create</button>
+      <button class="secondary" onclick="loadSources()">List</button>
+    </div>
+    <div class="hint">With a community set, the backend starts a device simulator (needs Kafka).</div>
+    <div id="sources" class="table-wrap"></div>
+  </section>
+
+  <section>
+    <h2>Electric vehicles</h2>
+    <div class="row">
+      <label>Household <select id="v-household" class="household-select" data-required></select></label>
+      <label>Name <input id="v-name" value="EV 1"></label>
+      <label>Capacity kWh <input id="v-cap" type="number" value="60"></label>
+      <label>SOC kWh <input id="v-soc" type="number" value="30"></label>
+      <label>Max charge kW <input id="v-chg" type="number" value="11"></label>
+      <label>Max discharge kW <input id="v-dis" type="number" value="11"></label>
+      <label>Eta <input id="v-eta" type="number" step="0.01" value="0.9"></label>
+      <label>Status <select id="v-status"><option>home</option><option>away</option></select></label>
+      <button onclick="createVehicle()">Create</button>
+      <button class="secondary" onclick="loadVehicles()">List</button>
+    </div>
+    <div class="row">
+      <label>Power kW <input id="op-power" type="number" value="10"></label>
+      <label>Duration h <input id="op-hours" type="number" step="0.25" value="1"></label>
+      <span class="hint">used by the charge / discharge buttons for EVs and batteries</span>
+    </div>
+    <div id="vehicles" class="table-wrap"></div>
+  </section>
+
+  <section>
+    <h2>Batteries</h2>
+    <div class="row">
+      <label>Household <select id="b-household" class="household-select" data-required></select></label>
+      <label>Name <input id="b-name" value="Battery 1"></label>
+      <label>Capacity kWh <input id="b-cap" type="number" value="100"></label>
+      <label>SOC kWh <input id="b-soc" type="number" value="50"></label>
+      <label>Max charge kW <input id="b-chg" type="number" value="20"></label>
+      <label>Max discharge kW <input id="b-dis" type="number" value="20"></label>
+      <label>Eta <input id="b-eta" type="number" step="0.01" value="0.95"></label>
+      <button onclick="createBattery()">Create</button>
+      <button class="secondary" onclick="loadBatteries()">List</button>
+    </div>
+    <div id="batteries" class="table-wrap"></div>
+  </section>
+
+  <section>
+    <h2>Time series</h2>
+    <div class="row">
+      <label>Series <select id="ts-source"><option>load</option><option>market</option><option>solar</option></select></label>
+      <label>Source id (solar) <select id="ts-source-id"><option value="">all</option></select></label>
+      <label>Start <input id="ts-start" type="date"></label>
+      <label>End <input id="ts-end" type="date"></label>
+      <label>Max points <input id="ts-top" type="number" value="500"></label>
+      <label style="flex-direction:row;align-items:center;gap:4px"><input id="ts-forecast" type="checkbox" checked> overlay forecast</label>
+      <button onclick="plotSeries()">Plot</button>
+      <button class="secondary" onclick="loadSourceIds()">Refresh source ids</button>
+    </div>
+    <div class="chart"><canvas id="chart-ts"></canvas></div>
+  </section>
+
+  <section>
+    <h2>Optimization</h2>
+    <div class="row">
+      <button onclick="runOptimize()">Optimize home EVs</button>
+      <span class="hint">Needs at least one EV with status "home" and solar/load/market <em>forecasts</em> (train + run inference first).</span>
+    </div>
+    <div class="chart"><canvas id="chart-soc"></canvas></div>
+    <div class="chart"><canvas id="chart-grid"></canvas></div>
+  </section>
+
+  <section>
+    <h2>Forecasting</h2>
+    <div class="row">
+      <button onclick="call('POST','/api/forecasting/train')">Train</button>
+      <button onclick="call('POST','/api/forecasting/inference')">Run inference</button>
+      <button class="secondary" onclick="call('GET','/api/forecasting/status')">Status</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Weather (Open-Meteo)</h2>
+    <div class="row">
+      <label>Lat <input id="w-lat" type="number" step="0.01" value="50.85"></label>
+      <label>Lon <input id="w-lon" type="number" step="0.01" value="4.35"></label>
+      <button class="secondary" onclick="call('GET', `/api/weather/current?lat=${val('w-lat')}&lon=${val('w-lon')}`)">Current</button>
+      <button onclick="plotWeather()">Plot 48 h forecast</button>
+    </div>
+    <div class="chart"><canvas id="chart-weather"></canvas></div>
+  </section>
+</div>
+
+<aside>
+  <section style="display:flex;flex-direction:column;min-height:0;flex:1;margin:0">
+    <h2 style="display:flex;justify-content:space-between">Request log <button class="secondary" style="padding:0 6px" onclick="document.getElementById('log').innerHTML=''">clear</button></h2>
+    <div id="log"></div>
+  </section>
+</aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+// Failed calls are already shown in the request log; don't also raise them as page errors.
+window.addEventListener("unhandledrejection", (e) => e.preventDefault());
+const val = (id) => $(id).value.trim();
+const num = (id) => Number($(id).value);
+const charts = {};
+const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#4b5563"];
+
+// Remember the backend URL between visits.
+try { const saved = localStorage.getItem("vpp-console-base"); if (saved) $("base").value = saved; } catch {}
+$("base").addEventListener("change", () => { try { localStorage.setItem("vpp-console-base", val("base")); } catch {} });
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function logEntry(method, path, status, ms, body) {
+  const ok = status >= 200 && status < 300;
+  const el = document.createElement("details");
+  el.className = "entry";
+  const text = typeof body === "string" ? body : JSON.stringify(body, null, 2);
+  el.innerHTML = `<summary><span class="${ok ? "s-ok" : "s-err"}">${status || "ERR"}</span> ${method} ${escapeHtml(path)} <span class="hint">${ms} ms</span></summary><pre>${escapeHtml(text ?? "")}</pre>`;
+  if (!ok) el.open = true;
+  $("log").prepend(el);
+}
+
+/** Call the backend, log the exchange, and return parsed JSON (throws on non-2xx). */
+async function call(method, path, body) {
+  const started = performance.now();
+  const opts = { method, headers: {} };
+  if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+  let res, data;
+  try {
+    res = await fetch(val("base").replace(/\/$/, "") + path, opts);
+    const raw = await res.text();
+    try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
+  } catch (err) {
+    logEntry(method, path, 0, Math.round(performance.now() - started), `Network error: ${err.message}\nIs the backend running at ${val("base")}?`);
+    throw err;
+  }
+  logEntry(method, path, res.status, Math.round(performance.now() - started), body === undefined ? data : { request: body, response: data });
+  if (!res.ok) throw new Error(data?.detail ? JSON.stringify(data.detail) : `HTTP ${res.status}`);
+  return data;
+}
+
+async function checkHealth() {
+  try { await call("GET", "/health"); $("health").textContent = "● up"; $("health").style.color = "#4ade80"; }
+  catch { $("health").textContent = "● down"; $("health").style.color = "#f87171"; }
+}
+
+/** Render rows as a table; actions is a list of [label, handler(row), className]. */
+function renderTable(targetId, rows, columns, actions = []) {
+  const target = $(targetId);
+  if (!rows?.length) { target.innerHTML = '<div class="hint">No rows.</div>'; return; }
+  const cols = columns || Object.keys(rows[0]);
+  const fmt = (v) => v === null || v === undefined ? "" : typeof v === "number" ? +v.toFixed(3) : typeof v === "object" ? JSON.stringify(v) : v;
+  let html = "<table><thead><tr>" + cols.map((c) => `<th>${c}</th>`).join("") + (actions.length ? "<th></th>" : "") + "</tr></thead><tbody>";
+  rows.forEach((r, i) => {
+    html += "<tr>" + cols.map((c) => `<td>${escapeHtml(fmt(r[c]))}</td>`).join("");
+    if (actions.length) html += `<td class="actions">` + actions.map(([label, , cls], j) => `<button class="${cls || "secondary"}" data-row="${i}" data-action="${j}">${label}</button>`).join("") + "</td>";
+    html += "</tr>";
+  });
+  target.innerHTML = html + "</tbody></table>";
+  target.querySelectorAll("button[data-action]").forEach((btn) => {
+    btn.onclick = () => actions[btn.dataset.action][1](rows[btn.dataset.row]);
+  });
+}
+
+function fillSelect(className, items, idKey, labelKey) {
+  document.querySelectorAll("select." + className).forEach((sel) => {
+    const prev = sel.value;
+    const empty = sel.hasAttribute("data-required") ? "" : '<option value="">(none)</option>';
+    sel.innerHTML = empty + items.map((it) => `<option value="${escapeHtml(it[idKey])}">${escapeHtml(it[labelKey])} · ${escapeHtml(it[idKey])}</option>`).join("");
+    if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+  });
+}
+
+function plot(canvasId, labels, datasets, yTitle) {
+  charts[canvasId]?.destroy();
+  $(canvasId).parentElement.classList.add("has-data");
+  charts[canvasId] = new Chart($(canvasId), {
+    type: "line",
+    data: {
+      labels,
+      datasets: datasets.map((d, i) => ({ borderColor: COLORS[i % COLORS.length], backgroundColor: COLORS[i % COLORS.length], pointRadius: 0, borderWidth: 1.5, spanGaps: true, ...d })),
+    },
+    options: {
+      animation: false, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+      scales: { x: { ticks: { maxTicksLimit: 10, maxRotation: 0 } }, y: { title: { display: !!yTitle, text: yTitle } } },
+    },
+  });
+}
+
+const shortTime = (iso) => String(iso).replace("T", " ").slice(0, 16);
+
+// --- Lists -------------------------------------------------------------------
+
+async function loadCommunities() {
+  const rows = await call("GET", "/api/communities");
+  renderTable("communities", rows, ["community_id", "name", "location_lat", "location_lon", "created_at"]);
+  fillSelect("community-select", rows, "community_id", "name");
+}
+
+async function loadHouseholds() {
+  const rows = await call("GET", "/api/households");
+  renderTable("households", rows, ["household_id", "name", "solar_panels", "num_people", "num_evs", "building_type"], [
+    ["summary", (r) => call("GET", `/api/households/${r.household_id}/summary`)],
+    ["delete", (r) => confirm(`Delete ${r.household_id} and its EVs/batteries?`) && call("DELETE", `/api/households/${r.household_id}`).then(refreshAll), "danger"],
+  ]);
+  fillSelect("household-select", rows, "household_id", "name");
+}
+
+async function loadSources() {
+  const rows = await call("GET", "/api/sources");
+  renderTable("sources", rows, ["source_id", "source_type", "name", "household_id", "current_value", "status"], [
+    ["plot", (r) => { $("ts-source").value = "solar"; loadSourceIds().then(() => { $("ts-source-id").value = r.source_id; plotSeries(); }); }],
+    ["delete", (r) => call("DELETE", `/api/sources/${r.source_id}`).then(loadSources), "danger"],
+  ]);
+}
+
+async function loadVehicles() {
+  const rows = await call("GET", "/api/vehicles");
+  const op = () => ({ power_kw: num("op-power"), duration_h: num("op-hours") });
+  renderTable("vehicles", rows, ["vehicle_id", "household_id", "name", "soc_kwh", "capacity_kwh", "max_charge_kw", "max_discharge_kw", "eta", "status"], [
+    ["charge", (r) => call("POST", `/api/vehicles/${r.vehicle_id}/charge`, op()).then(loadVehicles)],
+    ["discharge", (r) => call("POST", `/api/vehicles/${r.vehicle_id}/discharge`, op()).then(loadVehicles)],
+    ["toggle home/away", (r) => call("POST", `/api/vehicles/${r.vehicle_id}/location?status=${r.status === "home" ? "away" : "home"}`).then(loadVehicles)],
+    ["delete", (r) => call("DELETE", `/api/vehicles/${r.vehicle_id}`).then(loadVehicles), "danger"],
+  ]);
+}
+
+async function loadBatteries() {
+  const rows = await call("GET", "/api/batteries");
+  const op = () => ({ power_kw: num("op-power"), duration_h: num("op-hours") });
+  renderTable("batteries", rows, ["battery_id", "household_id", "name", "soc_kwh", "capacity_kwh", "max_charge_kw", "max_discharge_kw", "eta"], [
+    ["charge", (r) => call("POST", `/api/batteries/${r.battery_id}/charge`, op()).then(loadBatteries)],
+    ["discharge", (r) => call("POST", `/api/batteries/${r.battery_id}/discharge`, op()).then(loadBatteries)],
+    ["delete", (r) => call("DELETE", `/api/batteries/${r.battery_id}`).then(loadBatteries), "danger"],
+  ]);
+}
+
+async function loadSourceIds() {
+  const ids = await call("GET", "/api/source-ids/solar");
+  const sel = $("ts-source-id"), prev = sel.value;
+  sel.innerHTML = '<option value="">all</option>' + ids.map((id) => `<option>${escapeHtml(id)}</option>`).join("");
+  if (ids.includes(prev)) sel.value = prev;
+}
+
+async function refreshAll() {
+  // Run independently so one failing list doesn't hide the others.
+  await Promise.allSettled([loadCommunities(), loadHouseholds(), loadSources(), loadVehicles(), loadBatteries(), loadSourceIds()]);
+}
+
+// --- Create ------------------------------------------------------------------
+
+const optional = (id) => val(id) || null;
+
+function createCommunity() {
+  return call("POST", "/api/communities", { name: val("c-name"), location_lat: num("c-lat"), location_lon: num("c-lon") }).then(loadCommunities);
+}
+
+function createHousehold() {
+  return call("POST", "/api/households", {
+    name: val("h-name"), latitude: num("h-lat"), longitude: num("h-lon"),
+    solar_panels: num("h-panels"), num_people: num("h-people"), num_evs: num("h-evs"),
+    community_id: optional("h-community"),
+  }).then(loadHouseholds);
+}
+
+function createSource() {
+  return call("POST", "/api/sources", {
+    source_type: val("s-type"), name: optional("s-name"), latitude: num("s-lat"), longitude: num("s-lon"),
+    household_id: optional("s-household"), community_id: optional("s-community"),
+  }).then(loadSources);
+}
+
+function createVehicle() {
+  return call("POST", "/api/vehicles", {
+    household_id: val("v-household"), name: val("v-name"), capacity_kwh: num("v-cap"), soc_kwh: num("v-soc"),
+    max_charge_kw: num("v-chg"), max_discharge_kw: num("v-dis"), eta: num("v-eta"), status: val("v-status"),
+  }).then(loadVehicles);
+}
+
+function createBattery() {
+  return call("POST", "/api/batteries", {
+    household_id: val("b-household"), name: val("b-name"), capacity_kwh: num("b-cap"), soc_kwh: num("b-soc"),
+    max_charge_kw: num("b-chg"), max_discharge_kw: num("b-dis"), eta: num("b-eta"),
+  }).then(loadBatteries);
+}
+
+// --- Summaries and plots -----------------------------------------------------
+
+function renderKv(obj) {
+  $("summary").innerHTML = Object.entries(obj).map(([k, v]) => `<span>${escapeHtml(k)}</span><span>${escapeHtml(typeof v === "number" ? +v.toFixed(3) : v)}</span>`).join("");
+}
+
+async function showDeviceStatus() { renderKv(await call("GET", "/api/device-status")); }
+async function showSummary() { renderKv(await call("GET", "/api/community/summary")); }
+
+async function plotSeries() {
+  const source = val("ts-source");
+  const params = new URLSearchParams();
+  if (source === "solar" && val("ts-source-id")) params.set("source_id", val("ts-source-id"));
+  if (val("ts-start")) params.set("start", val("ts-start"));
+  if (val("ts-end")) params.set("end", val("ts-end") + "T23:59:59");
+  const hist = await call("GET", `/api/historical/${source}?${params}&top=${num("ts-top") || 500}`);
+
+  let fc = [];
+  if ($("ts-forecast").checked) {
+    try { fc = await call("GET", `/api/forecasted/${source}?${params}`); } catch { fc = []; }
+  }
+
+  // Merge both series onto one sorted time axis.
+  const times = [...new Set([...hist, ...fc].map((p) => p.timestamp))].sort();
+  const index = (series) => Object.fromEntries(series.map((p) => [p.timestamp, p.value]));
+  const h = index(hist), f = index(fc);
+  const datasets = [{ label: `${source} actual (${hist.length})`, data: times.map((t) => h[t] ?? null) }];
+  if (fc.length) datasets.push({ label: `${source} forecast (${fc.length})`, data: times.map((t) => f[t] ?? null), borderDash: [4, 3] });
+  plot("chart-ts", times.map(shortTime), datasets, source === "market" ? "price" : "kW");
+}
+
+async function runOptimize() {
+  const rows = await call("POST", "/api/optimize");
+  if (!rows.length) return;
+  const times = [...new Set(rows.map((r) => r.time))].sort();
+  const evIds = [...new Set(rows.map((r) => r.battery_id))];
+  const byKey = Object.fromEntries(rows.map((r) => [`${r.battery_id}|${r.time}`, r]));
+
+  plot("chart-soc", times.map(shortTime), evIds.map((id) => ({ label: `${id} SOC`, data: times.map((t) => byKey[`${id}|${t}`]?.soc ?? null) })), "kWh");
+
+  // Grid flows are per time step; take the first row for each step.
+  const firstAt = Object.fromEntries([...rows].reverse().map((r) => [r.time, r]));
+  plot("chart-grid", times.map(shortTime), [
+    { label: "grid buy", data: times.map((t) => firstAt[t]?.grid_buy ?? null) },
+    { label: "grid sell", data: times.map((t) => firstAt[t]?.grid_sell ?? null) },
+    ...evIds.map((id) => ({ label: `${id} charge − discharge`, data: times.map((t) => { const r = byKey[`${id}|${t}`]; return r ? r.charge - r.discharge : null; }), borderDash: [4, 3] })),
+  ], "kW");
+  loadVehicles();
+}
+
+async function plotWeather() {
+  const data = await call("GET", `/api/weather/forecast?lat=${val("w-lat")}&lon=${val("w-lon")}`);
+  const f = data.forecasts || [];
+  plot("chart-weather", f.map((p) => shortTime(p.time)), [
+    { label: "irradiance W/m²", data: f.map((p) => p.irradiance_w_m2), yAxisID: "y" },
+    { label: "temperature °C", data: f.map((p) => p.temperature_c), yAxisID: "y1" },
+    { label: "cloud cover %", data: f.map((p) => p.cloudcover_pct), yAxisID: "y1", borderDash: [4, 3] },
+  ]);
+  charts["chart-weather"].options.scales.y1 = { position: "right", grid: { drawOnChartArea: false } };
+  charts["chart-weather"].update();
+}
+
+checkHealth().then(refreshAll);
+</script>
+</body>
+</html>
