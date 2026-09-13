@@ -1,12 +1,31 @@
 name: Backend CI
 
+# Runs only when backend-relevant files change; frontend-only changes skip it.
 on:
   push:
-    branches:
-      - main
+    branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "requirements/**"
+      - "pytest.ini"
+      - "pyproject.toml"
+      - "docker/**"
+      - "entrypoints/**"
+      - "docker-compose*.yaml"
+      - ".github/workflows/tests.yaml"
   pull_request:
-    branches:
-      - main
+    branches: [main, develop]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "requirements/**"
+      - "pytest.ini"
+      - "pyproject.toml"
+      - "docker/**"
+      - "entrypoints/**"
+      - "docker-compose*.yaml"
+      - ".github/workflows/tests.yaml"
 
 jobs:
   lint:
@@ -36,57 +55,62 @@ jobs:
           POSTGRES_PASSWORD: testpass
           DOMAIN: localhost
 
-  test:
+  unit:
+    name: Unit tests (no infrastructure)
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-    # Define services (like a Docker container) to run alongside the job
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements/requirements-*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements/requirements-test.txt
+
+      - name: Run unit tests
+        run: pytest -m "not integration"
+
+  integration:
+    name: Full suite (TimescaleDB)
+    runs-on: ubuntu-latest
+    needs: unit
+
     services:
       timescale:
-        # Use the TimescaleDB image you specified
         image: timescale/timescaledb-ha:pg17
         env:
           POSTGRES_PASSWORD: testpass
         ports:
-          - 5432:5432 # Maps container's port 5432 to host's port 5432
-        # Ensure the container is healthy before proceeding
+          - 55432:5432
         options: >-
-          --name timescale-test
           --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 20
+
+    env:
+      VPP_TEST_DB_HOST: localhost
+      VPP_TEST_DB_PORT: "55432"
+      VPP_TEST_DB_PASSWORD: testpass
+      GIST_SECRET: ${{ secrets.GIST_SECRET }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: "3.10" # Replace with your Python version
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: requirements/requirements-*.txt
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-cov psycopg2-binary pandas  # Add psycopg2 for PostgreSQL connection
-          if [ -f ./requirements/requirements.txt ]; then pip install -r ./requirements/requirements.txt; fi
+        run: pip install -r requirements/requirements-test.txt
 
-      - name: Wait for TimescaleDB to be ready
-        run: |
-          until pg_isready -h localhost -p 5432 -U postgres; do
-            echo "Waiting for TimescaleDB..."
-            sleep 2
-          done
-
-      - name: Run tests with coverage
-        run: |
-          pytest --cov=./ --cov-report=xml --cov-report=term-missing
-        env:
-          POSTGRES_DB: postgres # Default database name
-          POSTGRES_USER: postgres # Default TimescaleDB user
-          POSTGRES_PASSWORD: testpass # Matches the service env
-          TIMESCALEDB_HOST: localhost # Container is accessible on localhost
-          POSTGRES_PORT: 5432 # Matches the mapped port
+      - name: Run all tests with coverage
+        run: pytest --cov=backend --cov-report=xml --cov-report=term-missing
 
       - name: Extract coverage percentage
         if: github.ref == 'refs/heads/main'
@@ -94,6 +118,6 @@ jobs:
           python -c "import xml.etree.ElementTree as ET; tree = ET.parse('coverage.xml'); root = tree.getroot(); coverage = float(root.get('line-rate')) * 100; print(f'COVERAGE_PCT={int(coverage)}')" >> $GITHUB_ENV
 
       - name: Create coverage badge manually
-        if: github.ref == 'refs/heads/main' && secrets.GIST_SECRET != ''
+        if: github.ref == 'refs/heads/main' && env.GIST_SECRET != ''
         run: |
-          curl -X PATCH -H "Authorization: token ${{ secrets.GIST_SECRET }}" -d "{\"files\": {\"coverage.json\": {\"content\": \"{\\\"schemaVersion\\\": 1, \\\"label\\\": \\\"Coverage\\\", \\\"message\\\": \\\"${{ env.COVERAGE_PCT }}%\\\", \\\"color\\\": \\\"green\\\"}\"}}}" https://api.github.com/gists/ecfd0b8a247e4da2abafbdc142d7d01b
+          curl -X PATCH -H "Authorization: token $GIST_SECRET" -d "{\"files\": {\"coverage.json\": {\"content\": \"{\\\"schemaVersion\\\": 1, \\\"label\\\": \\\"Coverage\\\", \\\"message\\\": \\\"${{ env.COVERAGE_PCT }}%\\\", \\\"color\\\": \\\"green\\\"}\"}}}" https://api.github.com/gists/ecfd0b8a247e4da2abafbdc142d7d01b

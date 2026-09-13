@@ -1,0 +1,7 @@
+# Backend test dependencies: the API runtime plus the test runner.
+# Install with: pip install -r requirements/requirements-test.txt
+-r requirements-backend.txt
+
+pytest==8.3.4
+pytest-mock==3.14.0
+pytest-cov==6.0.0

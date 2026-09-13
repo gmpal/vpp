@@ -1,0 +1,24 @@
+# Disposable TimescaleDB for the backend integration tests.
+#
+#   make test-db-up     start it (host port 55432)
+#   make test-int       run integration tests against it
+#   make test-db-down   remove it and its data
+#
+# It is intentionally separate from docker-compose.yaml: no .env, no Kafka,
+# no frontend, and a non-default port so it never collides with a dev database.
+name: vpp-test
+
+services:
+  timescaledb-test:
+    image: timescale/timescaledb-ha:pg17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: postgres
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
