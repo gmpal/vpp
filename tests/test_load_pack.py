@@ -17,7 +17,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-import bcrypt
 
 
 @pytest.fixture
@@ -101,67 +100,6 @@ def sample_pack_dir(tmp_path):
         writer.writerows(rows)
 
     return pack_dir, pack_name
-
-
-@pytest.mark.integration
-class TestLoadPackAdminUser:
-    """Test admin user creation logic."""
-
-    def test_admin_user_created(self, db_manager):
-        """First load should create the admin user."""
-        from backend.src.research.load_pack import ensure_admin_user
-
-        # Check if admin user already exists (from previous test runs)
-        existing = db_manager.execute(
-            "SELECT 1 FROM users WHERE user_id = %s LIMIT 1",
-            ("admin",),
-            fetch=True,
-        )
-        if not existing:
-            ensure_admin_user(db_manager)
-
-        rows = db_manager.execute(
-            "SELECT user_id, username FROM users WHERE user_id = %s",
-            ("admin",),
-            fetch=True,
-        )
-        assert len(rows) == 1
-        assert rows[0]["user_id"] == "admin"
-        assert rows[0]["username"] == "admin"
-
-    def test_admin_user_idempotent(self, db_manager):
-        """Calling ensure_admin_user twice should not create duplicates."""
-        from backend.src.research.load_pack import ensure_admin_user
-
-        ensure_admin_user(db_manager)
-        ensure_admin_user(db_manager)
-
-        rows = db_manager.execute(
-            "SELECT COUNT(*) as cnt FROM users WHERE user_id = %s",
-            ("admin",),
-            fetch=True,
-        )
-        assert rows[0]["cnt"] == 1
-
-    def test_admin_password_hashed(self, db_manager):
-        """Admin password should be bcrypt-hashed."""
-        from backend.src.research.load_pack import ensure_admin_user
-
-        ensure_admin_user(db_manager)
-
-        rows = db_manager.execute(
-            "SELECT hashed_password FROM users WHERE user_id = %s",
-            ("admin",),
-            fetch=True,
-        )
-        hashed = rows[0]["hashed_password"]
-        # Should be a bcrypt hash (starts with $2b$)
-        assert hashed.startswith("$2b$")
-        # Verify the password works
-        assert bcrypt.checkpw(
-            b"admin",
-            hashed.encode(),
-        )
 
 
 @pytest.mark.integration

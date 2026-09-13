@@ -2,20 +2,16 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.api.auth import get_current_user
 from backend.api.models import Battery, BatteryCreate, BatteryOperation
 from backend.src.dependencies import get_crud_manager
 
 router = APIRouter()
 
 
-def _assert_battery_ownership(crud, battery_id: str, user_id: str):
-    """Raise 404 if the battery doesn't exist or doesn't belong to the user."""
+def _get_battery_or_404(crud, battery_id: str):
+    """Raise 404 if the battery doesn't exist."""
     battery = crud.get_battery(battery_id)
     if not battery:
-        raise HTTPException(404, "Battery not found")
-    hh = crud.get_household(battery["household_id"], user_id=user_id)
-    if not hh:
         raise HTTPException(404, "Battery not found")
     return battery
 
@@ -23,19 +19,16 @@ def _assert_battery_ownership(crud, battery_id: str, user_id: str):
 @router.get("/batteries", response_model=list[Battery])
 def list_batteries(
     crud=Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    return crud.get_all_batteries(user_id=current_user["user_id"])
+    return crud.get_all_batteries()
 
 
 @router.post("/batteries", response_model=Battery)
 def create_battery(
     req: BatteryCreate,
     crud=Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    # Verify the target household belongs to the current user
-    hh = crud.get_household(req.household_id, user_id=current_user["user_id"])
+    hh = crud.get_household(req.household_id)
     if not hh:
         raise HTTPException(404, "Household not found")
 
@@ -57,18 +50,16 @@ def create_battery(
 def get_battery(
     battery_id: str,
     crud=Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    return _assert_battery_ownership(crud, battery_id, current_user["user_id"])
+    return _get_battery_or_404(crud, battery_id)
 
 
 @router.delete("/batteries/{battery_id}")
 def delete_battery(
     battery_id: str,
     crud=Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    _assert_battery_ownership(crud, battery_id, current_user["user_id"])
+    _get_battery_or_404(crud, battery_id)
     crud.delete_battery(battery_id)
     return {"message": "Battery deleted"}
 
@@ -78,9 +69,8 @@ def charge_battery(
     battery_id: str,
     op: BatteryOperation,
     crud=Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    battery = _assert_battery_ownership(crud, battery_id, current_user["user_id"])
+    battery = _get_battery_or_404(crud, battery_id)
     max_charge = min(op.power_kw, battery["max_charge_kw"])
     new_soc = min(battery["soc_kwh"] + max_charge * op.duration_h * battery["eta"], battery["capacity_kwh"])
     crud.update_battery_soc(battery_id, new_soc)
@@ -92,9 +82,8 @@ def discharge_battery(
     battery_id: str,
     op: BatteryOperation,
     crud=Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    battery = _assert_battery_ownership(crud, battery_id, current_user["user_id"])
+    battery = _get_battery_or_404(crud, battery_id)
     max_discharge = min(op.power_kw, battery["max_discharge_kw"])
     new_soc = max(battery["soc_kwh"] - max_discharge * op.duration_h / battery["eta"], 0.0)
     crud.update_battery_soc(battery_id, new_soc)

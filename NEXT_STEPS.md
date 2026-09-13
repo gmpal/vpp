@@ -53,7 +53,7 @@ Per `IMPLEMENTATION_PLAN_PHASE1.md` section I point 7.
 - `frontend/src/api.ts` — add `getCommunities()`, `createCommunity()`, update `addSource()`/`createHousehold()` to include `community_id`
 
 ### Key behavior:
-1. On login → fetch communities list
+1. On app load → fetch communities list
 2. If no community → prompt to create one first
 3. All data creation (sources, households, batteries) passes the selected `community_id`
 4. Dashboard shows data scoped to selected community only

@@ -44,17 +44,16 @@ class CrudManager:
             query = f"INSERT INTO {table} (time, value) VALUES (%s, %s)"
             self.db.execute(query, (timestamp, value))
 
-    def get_home_evs(self, user_id: str) -> list:
-        """Return home EVs for a specific user (via household ownership)."""
+    def get_home_evs(self) -> list:
+        """Return all EVs currently at home."""
         query = """
-        SELECT ev.vehicle_id, ev.capacity_kwh, ev.soc_kwh,
-               ev.max_charge_kw, ev.max_discharge_kw, ev.eta
-        FROM electric_vehicles ev
-        JOIN households hh ON ev.household_id = hh.household_id
-        WHERE ev.status = 'home' AND hh.user_id = %s
-        ORDER BY ev.vehicle_id
+        SELECT vehicle_id, capacity_kwh, soc_kwh,
+               max_charge_kw, max_discharge_kw, eta
+        FROM electric_vehicles
+        WHERE status = 'home'
+        ORDER BY vehicle_id
         """
-        rows = self.db.execute(query, (user_id,), fetch=True) or []
+        rows = self.db.execute(query, fetch=True) or []
         return [
             {
                 "vehicle_id": r[0],
@@ -192,18 +191,10 @@ class CrudManager:
             results.append(dict(zip(columns, row)))
         return results
 
-    def query_source_ids(self, source: str, user_id: str = None) -> list[str]:
+    def query_source_ids(self, source: str) -> list[str]:
         self._validate_table_name(source)
-        if user_id and source in self.db.renewables:
-            query = f"""
-            SELECT DISTINCT s.source_id FROM {source} s
-            JOIN energy_sources es ON s.source_id = es.source_id
-            WHERE es.user_id = %s
-            """
-            rows = self.db.execute(query, (user_id,), fetch=True) or []
-        else:
-            query = f"SELECT DISTINCT source_id FROM {source};"
-            rows = self.db.execute(query, fetch=True) or []
+        query = f"SELECT DISTINCT source_id FROM {source};"
+        rows = self.db.execute(query, fetch=True) or []
         return [row[0] for row in rows]
 
     # --- Community CRUD ---
@@ -211,50 +202,45 @@ class CrudManager:
     def create_community(
         self,
         community_id: str,
-        manager_user_id: str,
         name: str,
         location_lat: float = None,
         location_lon: float = None,
     ) -> dict:
         query = """
-        INSERT INTO communities (community_id, manager_user_id, name, location_lat, location_lon)
-        VALUES (%s, %s, %s, %s, %s)
-        RETURNING community_id, manager_user_id, name, location_lat, location_lon, created_at
+        INSERT INTO communities (community_id, name, location_lat, location_lon)
+        VALUES (%s, %s, %s, %s)
+        RETURNING community_id, name, location_lat, location_lon, created_at
         """
-        rows = self.db.execute(
-            query, (community_id, manager_user_id, name, location_lat, location_lon), fetch=True
-        )
+        rows = self.db.execute(query, (community_id, name, location_lat, location_lon), fetch=True)
         return self._community_row_to_dict(rows[0])
 
-    def get_community(self, community_id: str, manager_user_id: str) -> dict | None:
+    def get_community(self, community_id: str) -> dict | None:
         query = """
-        SELECT community_id, manager_user_id, name, location_lat, location_lon, created_at
+        SELECT community_id, name, location_lat, location_lon, created_at
         FROM communities
-        WHERE community_id = %s AND manager_user_id = %s
+        WHERE community_id = %s
         """
-        rows = self.db.execute(query, (community_id, manager_user_id), fetch=True) or []
+        rows = self.db.execute(query, (community_id,), fetch=True) or []
         if not rows:
             return None
         return self._community_row_to_dict(rows[0])
 
-    def list_communities(self, manager_user_id: str) -> list:
+    def list_communities(self) -> list:
         query = """
-        SELECT community_id, manager_user_id, name, location_lat, location_lon, created_at
+        SELECT community_id, name, location_lat, location_lon, created_at
         FROM communities
-        WHERE manager_user_id = %s
         ORDER BY created_at DESC
         """
-        rows = self.db.execute(query, (manager_user_id,), fetch=True) or []
+        rows = self.db.execute(query, fetch=True) or []
         return [self._community_row_to_dict(r) for r in rows]
 
     def _community_row_to_dict(self, r) -> dict:
         return {
             "community_id": str(r[0]),
-            "manager_user_id": r[1],
-            "name": r[2],
-            "location_lat": r[3],
-            "location_lon": r[4],
-            "created_at": r[5],
+            "name": r[1],
+            "location_lat": r[2],
+            "location_lon": r[3],
+            "created_at": r[4],
         }
 
     # --- Household CRUD ---
@@ -269,7 +255,6 @@ class CrudManager:
         num_people: int = 1,
         num_evs: int = 0,
         osm_feature_id: str = None,
-        user_id: str = None,
         geometry: dict = None,
         community_id: str = None,
     ):
@@ -278,53 +263,41 @@ class CrudManager:
         query = """
         INSERT INTO households (household_id, name, latitude, longitude,
                                 solar_panels, building_type, num_people, num_evs,
-                                osm_feature_id, user_id, geometry, community_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                                osm_feature_id, geometry, community_id)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (household_id) DO NOTHING
         """
         self.db.execute(
             query,
             (
                 household_id, name, latitude, longitude, solar_panels,
-                building_type, num_people, num_evs, osm_feature_id, user_id,
+                building_type, num_people, num_evs, osm_feature_id,
                 json.dumps(geometry) if geometry else None,
                 community_id,
             ),
         )
 
-    def get_all_households(self, user_id: str) -> list:
+    def get_all_households(self) -> list:
         query = """SELECT household_id, name, latitude, longitude,
                           solar_panels, building_type, num_people, num_evs, osm_feature_id, geometry
-                   FROM households WHERE user_id = %s ORDER BY created_at DESC"""
-        rows = self.db.execute(query, (user_id,), fetch=True) or []
+                   FROM households ORDER BY created_at DESC"""
+        rows = self.db.execute(query, fetch=True) or []
         return [self._household_row_to_dict(r) for r in rows]
 
-    def get_household(self, household_id: str, user_id: str = None) -> dict | None:
-        if user_id:
-            query = """SELECT household_id, name, latitude, longitude,
-                              solar_panels, building_type, num_people, num_evs, osm_feature_id, geometry
-                       FROM households WHERE household_id = %s AND user_id = %s"""
-            rows = self.db.execute(query, (household_id, user_id), fetch=True) or []
-        else:
-            query = """SELECT household_id, name, latitude, longitude,
-                              solar_panels, building_type, num_people, num_evs, osm_feature_id, geometry
-                       FROM households WHERE household_id = %s"""
-            rows = self.db.execute(query, (household_id,), fetch=True) or []
+    def get_household(self, household_id: str) -> dict | None:
+        query = """SELECT household_id, name, latitude, longitude,
+                          solar_panels, building_type, num_people, num_evs, osm_feature_id, geometry
+                   FROM households WHERE household_id = %s"""
+        rows = self.db.execute(query, (household_id,), fetch=True) or []
         if not rows:
             return None
         return self._household_row_to_dict(rows[0])
 
-    def get_household_by_osm_id(self, osm_feature_id: str, user_id: str = None) -> dict | None:
-        if user_id:
-            query = """SELECT household_id, name, latitude, longitude,
-                              solar_panels, building_type, num_people, num_evs, osm_feature_id, geometry
-                       FROM households WHERE osm_feature_id = %s AND user_id = %s"""
-            rows = self.db.execute(query, (osm_feature_id, user_id), fetch=True) or []
-        else:
-            query = """SELECT household_id, name, latitude, longitude,
-                              solar_panels, building_type, num_people, num_evs, osm_feature_id, geometry
-                       FROM households WHERE osm_feature_id = %s"""
-            rows = self.db.execute(query, (osm_feature_id,), fetch=True) or []
+    def get_household_by_osm_id(self, osm_feature_id: str) -> dict | None:
+        query = """SELECT household_id, name, latitude, longitude,
+                          solar_panels, building_type, num_people, num_evs, osm_feature_id, geometry
+                   FROM households WHERE osm_feature_id = %s"""
+        rows = self.db.execute(query, (osm_feature_id,), fetch=True) or []
         if not rows:
             return None
         return self._household_row_to_dict(rows[0])
@@ -370,17 +343,13 @@ class CrudManager:
         """
         self.db.execute(query, (vehicle_id, household_id, name, capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta, status))
 
-    def get_all_evs(self, user_id: str) -> list:
+    def get_all_evs(self) -> list:
         query = """
-        SELECT ev.vehicle_id, ev.household_id, ev.name, ev.capacity_kwh, ev.soc_kwh,
-               ev.max_charge_kw, ev.max_discharge_kw, ev.eta, ev.status,
-               ev.latitude, ev.longitude
-        FROM electric_vehicles ev
-        JOIN households hh ON ev.household_id = hh.household_id
-        WHERE hh.user_id = %s
-        ORDER BY ev.created_at DESC
+        SELECT vehicle_id, household_id, name, capacity_kwh, soc_kwh,
+               max_charge_kw, max_discharge_kw, eta, status, latitude, longitude
+        FROM electric_vehicles ORDER BY created_at DESC
         """
-        rows = self.db.execute(query, (user_id,), fetch=True) or []
+        rows = self.db.execute(query, fetch=True) or []
         return [self._ev_row_to_dict(r) for r in rows]
 
     def get_evs_by_household(self, household_id: str) -> list:
@@ -432,53 +401,48 @@ class CrudManager:
             "longitude": r[10],
         }
 
-    def get_community_summary(self, user_id: str) -> dict:
+    def get_community_summary(self) -> dict:
         """Returns aggregated production, consumption and EV state for the whole community."""
-        # Latest solar production sum — scoped to user's sources
+        # Latest solar production sum across registered sources
         solar_query = """
         SELECT COALESCE(SUM(latest.value), 0)
         FROM (
             SELECT DISTINCT ON (s.source_id) s.value
             FROM solar s
             JOIN energy_sources es ON s.source_id = es.source_id
-            WHERE es.user_id = %s
             ORDER BY s.source_id, s.time DESC
         ) latest
         """
-        solar_rows = self.db.execute(solar_query, (user_id,), fetch=True) or [(0,)]
+        solar_rows = self.db.execute(solar_query, fetch=True) or [(0,)]
         total_solar = float(solar_rows[0][0])
 
         total_production = total_solar
 
-        # Latest load — sum of each household's most recent value, scoped to this user
+        # Latest load — sum of each household's most recent value
         load_query = """
         SELECT COALESCE(SUM(latest.value), 0)
         FROM (
-            SELECT DISTINCT ON (hl.household_id) hl.value
-            FROM household_load hl
-            JOIN households hh ON hl.household_id = hh.household_id
-            WHERE hh.user_id = %s
-            ORDER BY hl.household_id, hl.time DESC
+            SELECT DISTINCT ON (household_id) value
+            FROM household_load
+            ORDER BY household_id, time DESC
         ) latest
         """
-        load_rows = self.db.execute(load_query, (user_id,), fetch=True) or [(0,)]
+        load_rows = self.db.execute(load_query, fetch=True) or [(0,)]
         total_consumption = float(load_rows[0][0])
 
-        # EV SOC aggregation — scoped to user's households
+        # EV SOC aggregation
         ev_query = """
-        SELECT COALESCE(SUM(ev.soc_kwh), 0), COALESCE(SUM(ev.capacity_kwh), 0), COUNT(*)
-        FROM electric_vehicles ev
-        JOIN households hh ON ev.household_id = hh.household_id
-        WHERE hh.user_id = %s
+        SELECT COALESCE(SUM(soc_kwh), 0), COALESCE(SUM(capacity_kwh), 0), COUNT(*)
+        FROM electric_vehicles
         """
-        ev_rows = self.db.execute(ev_query, (user_id,), fetch=True) or [(0, 0, 0)]
+        ev_rows = self.db.execute(ev_query, fetch=True) or [(0, 0, 0)]
         ev_soc_total = float(ev_rows[0][0])
         ev_soc_capacity = float(ev_rows[0][1])
         ev_count = int(ev_rows[0][2])
 
-        # Household count — scoped to user
-        hh_query = "SELECT COUNT(*) FROM households WHERE user_id = %s"
-        hh_rows = self.db.execute(hh_query, (user_id,), fetch=True) or [(0,)]
+        # Household count
+        hh_query = "SELECT COUNT(*) FROM households"
+        hh_rows = self.db.execute(hh_query, fetch=True) or [(0,)]
         household_count = int(hh_rows[0][0])
 
         net = total_production - total_consumption

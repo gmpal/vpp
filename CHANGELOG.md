@@ -17,6 +17,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `CONTRIBUTING.md` with branch conventions and coding standards
 - Inline documentation in `.env.example`
 
+### Removed
+- Authentication and per-user data scoping (JWT login, `users` table, `user_id` / `manager_user_id` ownership checks). Last present in commit `951c9b8` (also local branch `feature/auth`); restore by reverting this commit.
+
 ---
 
 ## [3.0.0] — 2025-xx-xx  *(pre-deployment)*

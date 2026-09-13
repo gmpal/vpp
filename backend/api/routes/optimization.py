@@ -2,7 +2,6 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.api.auth import get_current_user
 from backend.src.db import CrudManager
 from backend.src.dependencies import get_crud_manager
 from backend.src.optimization.optimization import optimize
@@ -15,9 +14,8 @@ logger = get_logger(__name__)
 @router.post("/optimize", response_model=List[Dict[str, Any]])
 def optimize_strategy(
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    evs = crud.get_home_evs(user_id=current_user["user_id"])
+    evs = crud.get_home_evs()
     if not evs:
         raise HTTPException(400, "No EVs with status='home' available for optimization")
 

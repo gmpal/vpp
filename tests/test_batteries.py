@@ -4,11 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.api.auth import get_current_user
 from backend.api.main import app
 from backend.src.dependencies import get_crud_manager
-
-_TEST_USER = {"user_id": "test_user_global_id", "id": "test_user_global_id", "username": "test_user"}
 
 
 @pytest.fixture
@@ -19,10 +16,8 @@ def mock_crud():
 @pytest.fixture
 def client(mock_crud):
     app.dependency_overrides[get_crud_manager] = lambda: mock_crud
-    app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     yield TestClient(app)
     app.dependency_overrides.pop(get_crud_manager, None)
-    app.dependency_overrides.pop(get_current_user, None)
 
 
 def _battery(overrides=None):
@@ -64,14 +59,14 @@ def test_list_batteries_returns_user_batteries(client, mock_crud):
 def test_list_batteries_scoped_to_user(client, mock_crud):
     mock_crud.get_all_batteries.return_value = []
     client.get("/api/batteries")
-    mock_crud.get_all_batteries.assert_called_once_with(user_id="test_user_global_id")
+    mock_crud.get_all_batteries.assert_called_once_with()
 
 
 # ---------------------------------------------------------------------------
 # POST /api/batteries
 # ---------------------------------------------------------------------------
 
-def test_create_battery_verifies_household_ownership(client, mock_crud):
+def test_create_battery_unknown_household_returns_404(client, mock_crud):
     mock_crud.get_household.return_value = None  # household not found
     payload = {"household_id": "hh_1", "name": "Test", "capacity_kwh": 10.0,
                "soc_kwh": 5.0, "max_charge_kw": 2.0, "max_discharge_kw": 2.0}
@@ -96,13 +91,6 @@ def test_create_battery_success(client, mock_crud):
 def test_delete_battery_not_found_returns_404(client, mock_crud):
     mock_crud.get_battery.return_value = None
     response = client.delete("/api/batteries/nonexistent")
-    assert response.status_code == 404
-
-
-def test_delete_battery_wrong_user_returns_404(client, mock_crud):
-    mock_crud.get_battery.return_value = _battery()
-    mock_crud.get_household.return_value = None  # household not owned by user
-    response = client.delete("/api/batteries/bat_abc123")
     assert response.status_code == 404
 
 

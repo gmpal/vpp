@@ -5,7 +5,6 @@ import { BrowserRouter } from "react-router-dom"; // Import BrowserRouter
 import App from "./App.tsx";
 import CssBaseline from "@mui/material/CssBaseline";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
-import { AuthProvider } from "./context/AuthContext";
 
 const theme = createTheme({
   /* ...theme settings... */
@@ -21,9 +20,7 @@ root.render(
       {/* Wrap with BrowserRouter */}
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <AuthProvider>
-          <App />
-        </AuthProvider>
+        <App />
       </ThemeProvider>
     </BrowserRouter>
   </React.StrictMode>,

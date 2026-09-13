@@ -3,7 +3,6 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.api.auth import get_current_user
 from backend.api.models import AddSourceRequest, EnergySourceWithData
 from backend.src.db import CrudManager, DatabaseManager
 from backend.src.dependencies import get_crud_manager, get_db_manager
@@ -20,17 +19,10 @@ def add_source_with_location(
     request: AddSourceRequest,
     db: DatabaseManager = Depends(get_db_manager),
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
     try:
-        # Verify community ownership when community_id is provided
-        if request.community_id:
-            community = crud.get_community(
-                community_id=request.community_id,
-                manager_user_id=current_user["user_id"],
-            )
-            if not community:
-                raise HTTPException(status_code=403, detail="Community not found or access denied")
+        if request.community_id and not crud.get_community(request.community_id):
+            raise HTTPException(status_code=404, detail="Community not found")
 
         _, source_id = create_new_source(
             source_type=request.source_type,
@@ -41,14 +33,14 @@ def add_source_with_location(
         name = request.name or f"{request.source_type.capitalize()} {source_id}"
         db.execute(
             """
-            INSERT INTO energy_sources (source_id, type, latitude, longitude, name, household_id, user_id, community_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO energy_sources (source_id, type, latitude, longitude, name, household_id, community_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (source_id) DO UPDATE
             SET latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
                 name = EXCLUDED.name, household_id = EXCLUDED.household_id,
-                user_id = EXCLUDED.user_id, community_id = EXCLUDED.community_id
+                community_id = EXCLUDED.community_id
         """,
-            (source_id, request.source_type, request.latitude, request.longitude, name, request.household_id, current_user["user_id"], request.community_id),
+            (source_id, request.source_type, request.latitude, request.longitude, name, request.household_id, request.community_id),
         )
 
         # Start device simulator when community_id is present
@@ -82,7 +74,6 @@ def add_source_with_location(
 @router.get("/sources", response_model=List[EnergySourceWithData])
 def get_all_sources(
     db: DatabaseManager = Depends(get_db_manager),
-    current_user: dict = Depends(get_current_user),
 ):
     try:
         rows = (
@@ -90,10 +81,8 @@ def get_all_sources(
                 """
             SELECT es.source_id, es.type, es.latitude, es.longitude, es.name, es.household_id
             FROM energy_sources es
-            WHERE es.user_id = %s
             ORDER BY es.created_at DESC
         """,
-                (current_user["user_id"],),
                 fetch=True,
             )
             or []
@@ -128,12 +117,11 @@ def get_all_sources(
 def delete_source(
     source_id: str,
     db: DatabaseManager = Depends(get_db_manager),
-    current_user: dict = Depends(get_current_user),
 ):
     try:
         result = db.execute(
-            "SELECT type FROM energy_sources WHERE source_id = %s AND user_id = %s",
-            (source_id, current_user["user_id"]),
+            "SELECT type FROM energy_sources WHERE source_id = %s",
+            (source_id,),
             fetch=True,
         )
         if not result:
@@ -156,6 +144,5 @@ def delete_source(
 def query_ids(
     source: str,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    return crud.query_source_ids(source, user_id=current_user["user_id"])
+    return crud.query_source_ids(source)

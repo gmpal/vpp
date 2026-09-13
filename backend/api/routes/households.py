@@ -3,7 +3,6 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.api.auth import get_current_user
 from backend.api.models import Household, HouseholdCreate
 from backend.src.db import CrudManager
 from backend.src.dependencies import get_crud_manager
@@ -16,16 +15,9 @@ router = APIRouter()
 def create_household(
     req: HouseholdCreate,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    # Verify community ownership when community_id is provided
-    if req.community_id:
-        community = crud.get_community(
-            community_id=req.community_id,
-            manager_user_id=current_user["user_id"],
-        )
-        if not community:
-            raise HTTPException(status_code=403, detail="Community not found or access denied")
+    if req.community_id and not crud.get_community(req.community_id):
+        raise HTTPException(status_code=404, detail="Community not found")
 
     household_id = f"hh_{uuid.uuid4().hex[:8]}"
     crud.create_household(
@@ -38,7 +30,6 @@ def create_household(
         num_people=req.num_people,
         num_evs=req.num_evs,
         osm_feature_id=req.osm_feature_id,
-        user_id=current_user["user_id"],
         geometry=req.geometry,
         community_id=req.community_id,
     )
@@ -71,18 +62,16 @@ def create_household(
 @router.get("/households", response_model=list[Household])
 def list_households(
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    return crud.get_all_households(user_id=current_user["user_id"])
+    return crud.get_all_households()
 
 
 @router.get("/households/by-osm/{osm_feature_id}", response_model=Household)
 def get_household_by_osm(
     osm_feature_id: str,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    hh = crud.get_household_by_osm_id(osm_feature_id, user_id=current_user["user_id"])
+    hh = crud.get_household_by_osm_id(osm_feature_id)
     if not hh:
         raise HTTPException(404, "Household not found")
     return hh
@@ -92,9 +81,8 @@ def get_household_by_osm(
 def get_household(
     household_id: str,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    hh = crud.get_household(household_id, user_id=current_user["user_id"])
+    hh = crud.get_household(household_id)
     if not hh:
         raise HTTPException(404, "Household not found")
     return hh
@@ -104,9 +92,8 @@ def get_household(
 def delete_household(
     household_id: str,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    hh = crud.get_household(household_id, user_id=current_user["user_id"])
+    hh = crud.get_household(household_id)
     if not hh:
         raise HTTPException(404, "Household not found")
     crud.delete_household(household_id)
@@ -118,9 +105,8 @@ def delete_household(
 def household_summary(
     household_id: str,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    hh = crud.get_household(household_id, user_id=current_user["user_id"])
+    hh = crud.get_household(household_id)
     if not hh:
         raise HTTPException(404, "Household not found")
     evs = crud.get_evs_by_household(household_id)

@@ -12,7 +12,6 @@ class CommunityCreate(BaseModel):
 
 class Community(BaseModel):
     community_id: str
-    manager_user_id: str
     name: str
     location_lat: Optional[float] = None
     location_lon: Optional[float] = None

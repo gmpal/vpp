@@ -18,10 +18,7 @@ import {
   DialogActions,
   List as MuiList,
   ListItem,
-  IconButton,
 } from "@mui/material";
-import LogoutIcon from "@mui/icons-material/Logout";
-import { useAuth } from "../context/AuthContext";
 import MapIcon from "@mui/icons-material/Map";
 import BoltIcon from "@mui/icons-material/Bolt";
 import HomeIcon from "@mui/icons-material/Home";
@@ -84,7 +81,6 @@ export const SIDEBAR_WIDTH = DRAWER_WIDTH;
 
 const Sidebar: React.FC = () => {
   const location = useLocation();
-  const { user, logout } = useAuth();
   const [initializing, setInitializing] = useState(false);
   const [initSteps, setInitSteps] = useState<StepState[]>(
     INIT_STEPS.map(() => ({ status: "pending" })),
@@ -387,44 +383,6 @@ const Sidebar: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {user && (
-        <>
-          <Divider sx={{ borderColor: "rgba(255,255,255,0.1)" }} />
-          <Box
-            sx={{
-              px: 1.5,
-              py: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <Typography
-              variant="caption"
-              sx={{
-                color: "rgba(255,255,255,0.5)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {user.username}
-            </Typography>
-            <Tooltip title="Logout">
-              <IconButton
-                size="small"
-                onClick={logout}
-                sx={{
-                  color: "rgba(255,255,255,0.5)",
-                  "&:hover": { color: "#f0c040" },
-                }}
-              >
-                <LogoutIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          </Box>
-        </>
-      )}
     </Drawer>
   );
 };

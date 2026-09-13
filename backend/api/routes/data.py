@@ -2,7 +2,6 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.api.auth import get_current_user
 from backend.api.models import DataPoint, DeviceCounts
 from backend.src.db import CrudManager
 from backend.src.dependencies import get_crud_manager
@@ -16,7 +15,6 @@ def query_realtime_data(
     source_id: Optional[str] = None,
     since: Optional[str] = None,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
     try:
         data_list = crud.load_historical_data(source, source_id, start=since, end=None, top=100)
@@ -32,7 +30,6 @@ def query_forecasted_data(
     start: Optional[str] = None,
     end: Optional[str] = None,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
     try:
         data_list = crud.load_forecasted_data(source, source_id, start, end)
@@ -49,7 +46,6 @@ def query_historical_data(
     end: Optional[str] = None,
     top: int = 50,
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
     try:
         data_list = crud.load_historical_data(source, source_id, start, end, top)
@@ -61,9 +57,7 @@ def query_historical_data(
 @router.get("/device-status", response_model=DeviceCounts)
 def query_device_counts(
     crud: CrudManager = Depends(get_crud_manager),
-    current_user: dict = Depends(get_current_user),
 ):
-    user_id = current_user["user_id"]
-    solar = len(crud.query_source_ids("solar", user_id=user_id))
-    wind = len(crud.query_source_ids("wind", user_id=user_id))
+    solar = len(crud.query_source_ids("solar"))
+    wind = len(crud.query_source_ids("wind"))
     return DeviceCounts(solar=solar, wind=wind)

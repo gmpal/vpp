@@ -3,10 +3,8 @@ The backend has two main folders under backend/:
 backend/
 ├── api/
 │   ├── main.py              ← FastAPI app, CORS, startup hooks
-│   ├── auth.py              ← JWT middleware
 │   ├── models.py            ← Pydantic request/response schemas
 │   └── routes/              ← one file per resource
-│       ├── auth.py          ← login/register
 │       ├── sources.py       ← energy sources (solar, wind…)
 │       ├── households.py
 │       ├── batteries.py

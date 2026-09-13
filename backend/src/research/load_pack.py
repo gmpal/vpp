@@ -6,10 +6,9 @@ Usage:
     python -m backend.src.research.load_pack --pack 300_3
 
 The script:
-  1. Ensures a default admin user exists (idempotent).
-  2. Loads entity metadata from entities.json.
-  3. Bulk-inserts households, sources, vehicles, battery, community.
-  4. Bulk-inserts readings into solar / household_load hypertables.
+  1. Loads entity metadata from entities.json.
+  2. Bulk-inserts households, sources, vehicles, battery, community.
+  3. Bulk-inserts readings into solar / household_load hypertables.
 
 Requires: database must already have the schema migrated
   (community_id column present on scoped tables).
@@ -21,7 +20,6 @@ import json
 import sys
 from pathlib import Path
 
-import bcrypt
 import pandas as pd
 
 from backend.src.db import DatabaseManager
@@ -33,39 +31,6 @@ from psycopg2.extras import execute_values
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 OUTPUT_DIR = BASE_DIR / "data" / "packs"
-
-# ---------------------------------------------------------------------------
-# Admin user
-# ---------------------------------------------------------------------------
-
-ADMIN_USER_ID = "admin"
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "admin"  # pragma: allowlist secret — research only
-
-
-def ensure_admin_user(db: DatabaseManager):
-    """Create default admin user if it does not exist."""
-    rows = db.execute(
-        "SELECT 1 FROM users WHERE user_id = %s LIMIT 1",
-        (ADMIN_USER_ID,),
-        fetch=True,
-    )
-    if rows:
-        print("  Admin user already exists.")
-        return
-
-    hashed = bcrypt.hashpw(
-        ADMIN_PASSWORD.encode(),
-        bcrypt.gensalt(),
-    ).decode()
-
-    db.execute(
-        "INSERT INTO users (user_id, username, hashed_password) "
-        "VALUES (%s, %s, %s)",
-        (ADMIN_USER_ID, ADMIN_USERNAME, hashed),
-    )
-    print(f"  Created admin user '{ADMIN_USER_ID}'.")
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -115,21 +80,17 @@ def load_pack(pack_name: str):
 
     db = DatabaseManager()
 
-    # --- 1. Admin user ---
-    print("  [1/5] Ensuring admin user …")
-    ensure_admin_user(db)
-
-    # --- 2. Community ---
-    print("  [2/5] Creating community …")
+    # --- 1. Community ---
+    print("  [1/4] Creating community …")
     community_id = entities["community_id"]
     db.execute(
-        "INSERT INTO communities (community_id, manager_user_id, name) "
-        "VALUES (%s, %s, %s)",
-        (community_id, ADMIN_USER_ID, entities["community_name"]),
+        "INSERT INTO communities (community_id, name) "
+        "VALUES (%s, %s)",
+        (community_id, entities["community_name"]),
     )
 
-    # --- 3. Households ---
-    print("  [3/5] Inserting households …")
+    # --- 2. Households ---
+    print("  [2/4] Inserting households …")
     has_community = _has_column(db, "households", "community_id")
     hh_cols = ["household_id", "name", "latitude", "longitude",
                "solar_panels", "building_type", "num_people", "num_evs"]
@@ -154,8 +115,8 @@ def load_pack(pack_name: str):
 
     _bulk_insert(db, "households", hh_cols, hh_rows)
 
-    # --- 4. Energy sources (solar) ---
-    print("  [4/5] Inserting sources …")
+    # --- 3. Energy sources (solar) ---
+    print("  [3/4] Inserting sources …")
     has_community_src = _has_column(db, "energy_sources", "community_id")
     src_cols = ["source_id", "type", "latitude", "longitude",
                 "household_id"]
@@ -178,8 +139,8 @@ def load_pack(pack_name: str):
     if src_rows:
         _bulk_insert(db, "energy_sources", src_cols, src_rows)
 
-    # --- 5. Electric vehicles ---
-    print("  [5/5] Inserting vehicles …")
+    # --- 4. Electric vehicles ---
+    print("  [4/4] Inserting vehicles …")
     veh_cols = ["vehicle_id", "household_id", "name",
                 "capacity_kwh", "soc_kwh", "max_charge_kw",
                 "max_discharge_kw", "eta", "status"]
@@ -218,7 +179,7 @@ def load_pack(pack_name: str):
 
     _bulk_insert(db, "batteries", bat_cols, bat_rows)
 
-    # --- 6. Readings ---
+    # --- 5. Readings ---
     print("\n  Loading readings …")
     readings_path = pack_dir / "readings.csv"
     if not readings_path.exists():

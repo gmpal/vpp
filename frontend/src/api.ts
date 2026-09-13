@@ -8,21 +8,10 @@ const api = axios.create({
   timeout: 15000,
 });
 
-// Attach JWT token to every request
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("vpp_token");
-  if (token) config.headers["Authorization"] = `Bearer ${token}`;
-  return config;
-});
-
-// Normalize backend errors; redirect to /login on 401
+// Normalize backend errors
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem("vpp_token");
-      window.location.href = "/login";
-    }
     const detail = (error.response?.data as any)?.detail;
     const message = detail ?? error.message ?? "Unknown error";
     return Promise.reject(new Error(message));
@@ -401,10 +390,8 @@ export interface InitStepEvent {
 export async function initDbStream(
   onStep: (event: InitStepEvent) => void,
 ): Promise<void> {
-  const token = localStorage.getItem("vpp_token");
   const response = await fetch(`${API_BASE_URL}/admin/init-db-stream`, {
     method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!response.body) throw new Error("No response body");
   const reader = response.body.getReader();

@@ -43,22 +43,10 @@ class SchemaManager:
         """
         self.db.execute(query)
 
-    def _create_users_table(self):
-        query = """
-        CREATE TABLE IF NOT EXISTS users (
-            user_id     VARCHAR(50) PRIMARY KEY,
-            username    VARCHAR(100) UNIQUE NOT NULL,
-            hashed_password TEXT NOT NULL,
-            created_at  TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-        );
-        """
-        self.db.execute(query)
-
     def _create_communities_table(self):
         query = """
         CREATE TABLE IF NOT EXISTS communities (
             community_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            manager_user_id VARCHAR(50) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
             name            VARCHAR(100) NOT NULL,
             location_lat    FLOAT,
             location_lon    FLOAT,
@@ -97,14 +85,24 @@ class SchemaManager:
                 )
                 pass  # table was never created for this deployment
 
-    def _migrate_add_user_id(self):
-        """Additive migration: add user_id FK to households and energy_sources if missing."""
-        for table in ("households", "energy_sources"):
-            self.db.execute(f"""
-                ALTER TABLE {table}
-                ADD COLUMN IF NOT EXISTS user_id VARCHAR(50)
-                REFERENCES users(user_id) ON DELETE CASCADE;
-            """)
+    def _migrate_relax_legacy_user_scoping(self):
+        """Non-destructive migration for databases created while auth existed.
+
+        Older schemas require communities.manager_user_id; make it nullable so
+        inserts without an owner succeed. Legacy columns are left in place and
+        disappear on the next reset.
+        """
+        self.db.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'communities' AND column_name = 'manager_user_id'
+                ) THEN
+                    ALTER TABLE communities ALTER COLUMN manager_user_id DROP NOT NULL;
+                END IF;
+            END $$;
+        """)
 
     def _migrate_add_building_geometry(self):
         """Additive migration: add geometry column to households if missing."""
@@ -288,7 +286,6 @@ class SchemaManager:
 
     def init_all_tables(self):
         """Create all tables only if they don't already exist. Safe to call on a live DB."""
-        self._create_users_table()  # must come first — communities FKs it
         self._create_communities_table()  # before households — households FKs it
         # households first — energy_sources has a FK to it
         self._create_households_table()  # already uses IF NOT EXISTS
@@ -302,13 +299,13 @@ class SchemaManager:
         self._create_electric_vehicles_table()  # already uses IF NOT EXISTS
         self._create_household_load_table()  # already uses IF NOT EXISTS
         self._create_batteries_table()  # already uses IF NOT EXISTS
-        self._migrate_add_user_id()  # idempotent: ADD COLUMN IF NOT EXISTS
+        self._migrate_relax_legacy_user_scoping()  # idempotent
         self._migrate_add_community_id()  # idempotent: ADD COLUMN IF NOT EXISTS
         self._migrate_household_load_fk()  # idempotent: ADD CONSTRAINT IF NOT EXISTS
         self._migrate_add_building_geometry()  # idempotent: ADD COLUMN IF NOT EXISTS
 
-    def _drop_all_tables_except_users(self):
-        """Drop all tables in public schema except the users table."""
+    def _drop_all_tables(self):
+        """Drop all tables in the public schema."""
         query = """
         DO $$
         DECLARE
@@ -318,7 +315,6 @@ class SchemaManager:
                 SELECT tablename
                 FROM pg_tables
                 WHERE schemaname = 'public'
-                AND tablename != 'users'
             LOOP
                 EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE;', tbl.tablename);
             END LOOP;
@@ -327,9 +323,8 @@ class SchemaManager:
         self.db.execute(query)
 
     def reset_all_tables(self):
-        self._drop_all_tables_except_users()
+        self._drop_all_tables()
 
-        self._create_users_table()  # idempotent — preserved across reset
         self._create_communities_table()  # before households — households FKs it
         # households must come before energy_sources (FK dependency)
         self._create_households_table()
@@ -343,7 +338,6 @@ class SchemaManager:
         self._create_electric_vehicles_table()
         self._create_household_load_table()
         self._create_batteries_table()
-        self._migrate_add_user_id()
         self._migrate_add_community_id()
         self._migrate_household_load_fk()
         self._migrate_add_building_geometry()

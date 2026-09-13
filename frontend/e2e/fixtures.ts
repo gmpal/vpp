@@ -2,9 +2,6 @@ import { Page, Route } from '@playwright/test';
 
 const API = 'http://localhost:8000/api';
 
-const FAKE_USER = { user_id: 'usr_test123', username: 'testuser' };
-const FAKE_TOKEN = 'fake-jwt-token-for-e2e-tests';
-
 /**
  * Mock all backend API endpoints so E2E tests can run without a live backend.
  *
@@ -15,25 +12,6 @@ const FAKE_TOKEN = 'fake-jwt-token-for-e2e-tests';
  * the full API URL to avoid intercepting page navigation.
  */
 export async function mockAllApis(page: Page) {
-  // Auth: mock /auth/me so ProtectedRoute sees a valid session
-  await page.route(`${API}/auth/me`, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_USER) })
-  );
-  await page.route(`${API}/auth/token`, (route) =>
-    route.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify({ access_token: FAKE_TOKEN, token_type: 'bearer' }),
-    })
-  );
-  await page.route(`${API}/auth/register`, (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(FAKE_USER) })
-  );
-
-  // Set token in localStorage so ProtectedRoute doesn't redirect to /login
-  await page.addInitScript((token) => {
-    localStorage.setItem('vpp_token', token);
-  }, FAKE_TOKEN);
-
   // Ambiguous paths (collide with frontend routes) — use exact API URL
   await page.route(`${API}/sources`, emptyArray);
   await page.route(`${API}/sources/*`, emptyObj);
