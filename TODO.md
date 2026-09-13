@@ -13,7 +13,7 @@ Found while testing with the API console (`make console`). Completed items are r
 1. **Done** (`34b25b5`) — data layer batch: batched inserts, latest-data semantics for `top`, stop generated load being wiped.
 2. **Done** (`640585a`, `b3c2e80`, `70badca`) — forecasting status + silent startup hooks; community summary battery fields.
 3. **On hold** — optimization model items (wear cost, discharge efficiency) until the uncommitted `dispatch()` / settlement work in `optimization.py` lands, to avoid conflicts.
-4. **Filler** — ~~wind leftovers~~ (done `ac46820`), 4xx mapping for unknown series, ruff findings.
+4. **Filler** — ~~wind leftovers~~ (done `ac46820`), ~~ruff findings~~ (done, see below), 4xx mapping for unknown series.
 5. **Done** — `develop` pushed 2026-09-13 (`951c9b8..66166c7`); later commits are local until the next push.
 
 ### Bugs
@@ -39,7 +39,7 @@ Found while testing with the API console (`make console`). Completed items are r
 - [x] **Wind leftovers** — removed 2026-09-13 (`ac46820`): simulator, consumer, weather provider, schema lists, API model (`Literal["solar"]`), `windpowerlib`, frontend API types. Wind speed stays in weather data (PV cell temperature). `frontend/src/realtime.temp` (unused scratch file) still mentions wind.
 - [ ] **Consumer inserts `source_id` into `load`** — `_handle_device_reading` writes `INSERT INTO load (time, source_id, value, community_id)`, but `load` has no `source_id` column, so every simulated load reading fails. Load is household-derived; decide whether simulated load readings belong in `household_load` or should be dropped.
 - [ ] **`load_pack` is not re-runnable** — plain INSERTs; loading a pack twice fails on the first duplicate key.
-- [ ] **Ruff** — 6 pre-existing findings as of `b3c2e80` (import order, unused `pandas` import and complexity in `load_pack`); the uncommitted `build_packs` rewrite removes another.
+- [x] **Ruff** — fixed 2026-09-13: import order, unused import, `load_pack` split into helpers. One finding remains in committed code, `build_packs` complexity (13 > 10), which the in-progress `build_packs.py` rewrite removes; CI's Lint (Ruff) job stays red until that lands.
 - [ ] **Local dev ports** — on the maintainer's machine `.env` conflicts: port 8000 is used by another app and 5432 by a native Windows Postgres. Workaround: backend on 8001 against the test DB on 55432.
 
 ## High Priority — Tooling & Libraries
