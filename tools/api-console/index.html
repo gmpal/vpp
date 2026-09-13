@@ -171,10 +171,13 @@
   <section>
     <h2>Optimization</h2>
     <div class="row">
+      <label>Sell price factor <input id="opt-sell" type="number" step="0.05" min="0" placeholder="default"></label>
       <button onclick="runOptimize()">Optimize home EVs</button>
       <span class="hint">Needs at least one EV with status "home" and solar/load/market <em>forecasts</em> (train + run inference first).</span>
     </div>
+    <div id="opt-summary" class="kv"></div>
     <div class="chart"><canvas id="chart-soc"></canvas></div>
+    <div class="chart"><canvas id="chart-prices"></canvas></div>
     <div class="chart"><canvas id="chart-grid"></canvas></div>
   </section>
 
@@ -432,8 +435,12 @@ async function plotSeries() {
 }
 
 async function runOptimize() {
-  const rows = await call("POST", "/api/optimize");
+  const factor = val("opt-sell");
+  const rows = await call("POST", "/api/optimize" + (factor ? `?sell_price_factor=${encodeURIComponent(factor)}` : ""));
   if (!rows.length) return;
+  const first = rows[0];
+  $("opt-summary").innerHTML = ["status", "total_cost", "stored_energy_price", "stored_energy_value", "objective"]
+    .map((k) => `<span>${k}</span><span>${escapeHtml(typeof first[k] === "number" ? +first[k].toFixed(3) : first[k])}</span>`).join("");
   const times = [...new Set(rows.map((r) => r.time))].sort();
   const evIds = [...new Set(rows.map((r) => r.battery_id))];
   const byKey = Object.fromEntries(rows.map((r) => [`${r.battery_id}|${r.time}`, r]));
@@ -442,9 +449,16 @@ async function runOptimize() {
 
   // Grid flows are per time step; take the first row for each step.
   const firstAt = Object.fromEntries([...rows].reverse().map((r) => [r.time, r]));
+  plot("chart-prices", times.map(shortTime), [
+    { label: "buy price", data: times.map((t) => firstAt[t]?.price ?? null) },
+    { label: "sell price", data: times.map((t) => firstAt[t]?.sell_price ?? null), borderDash: [4, 3] },
+    { label: "stored energy value", data: times.map(() => first.stored_energy_price), borderDash: [1, 3] },
+  ], "price / kWh");
   plot("chart-grid", times.map(shortTime), [
     { label: "grid buy", data: times.map((t) => firstAt[t]?.grid_buy ?? null) },
     { label: "grid sell", data: times.map((t) => firstAt[t]?.grid_sell ?? null) },
+    { label: "solar", data: times.map((t) => firstAt[t]?.solar ?? null) },
+    { label: "load", data: times.map((t) => firstAt[t]?.load ?? null) },
     ...evIds.map((id) => ({ label: `${id} charge − discharge`, data: times.map((t) => { const r = byKey[`${id}|${t}`]; return r ? r.charge - r.discharge : null; }), borderDash: [4, 3] })),
   ], "kW");
   loadVehicles();
