@@ -1,11 +1,6 @@
 # tests/test_db_integration.py - Integration tests for the database schema and CRUD operations
 """
-Make sure you run
-> docker run -d --name timescale-test -p 5432:5432 -e POSTGRES_PASSWORD=testpass timescale/timescaledb-ha:pg17
-before running this suite
-And stop it afterwards with
-> docker stop timescale-test
-> docker rm timescale-test
+Requires the disposable test database: `make test-int`.
 """
 import pytest
 import pandas as pd
@@ -49,12 +44,13 @@ def test_load_historical_data(crud_manager, schema_manager, cleanup):
     timestamp2 = pd.Timestamp("2023-01-02", tz="UTC")  # Make UTC-aware
     crud_manager.save_to_db("solar", timestamp1, "source123", 42.0)
     crud_manager.save_to_db("solar", timestamp2, "source123", 43.0)
-    df = crud_manager.load_historical_data(
+    rows = crud_manager.load_historical_data(
         "solar", "source123", start="2023-01-01", end="2023-01-02"
     )
-    assert len(df) == 2
-    assert df.index[0] == timestamp1  # Both are UTC-aware
-    assert df["value"].iloc[0] == 42.0
+    assert rows == [
+        {"time": timestamp1.to_pydatetime(), "value": 42.0},
+        {"time": timestamp2.to_pydatetime(), "value": 43.0},
+    ]
 
 
 def test_save_and_load_forecast(crud_manager, schema_manager, cleanup):
@@ -64,9 +60,10 @@ def test_save_and_load_forecast(crud_manager, schema_manager, cleanup):
         index=pd.to_datetime(["2023-01-01", "2023-01-02"], utc=True),  # Make UTC-aware
     )
     crud_manager.save_forecast("solar", "source123", forecasted_df)
-    df = crud_manager.load_forecasted_data(
+    rows = crud_manager.load_forecasted_data(
         "solar", "source123", start="2023-01-01", end="2023-01-02"
     )
-    assert len(df) == 2
-    assert df.index[0] == pd.Timestamp("2023-01-01", tz="UTC")  # Match UTC
-    assert df["yhat"].iloc[0] == 42.0
+    assert rows == [
+        {"time": pd.Timestamp("2023-01-01", tz="UTC").to_pydatetime(), "source_id": "source123", "yhat": 42.0},
+        {"time": pd.Timestamp("2023-01-02", tz="UTC").to_pydatetime(), "source_id": "source123", "yhat": 43.0},
+    ]

@@ -33,12 +33,13 @@ def db_query(db_manager, sql, params=None):
 # ---------------------------------------------------------------------------
 
 def test_reset_db_creates_tables_and_seeds_data(client, db_manager, schema_manager):
-    """reset-db must (re)create all tables and seed load + market rows."""
+    """reset-db must (re)create all tables and seed market rows only.
+
+    Load is not seeded: it is derived from household consumption.
+    """
     response = client.post("/api/admin/reset-db")
     assert response.status_code == 200
-    body = response.json()
-    assert body["load_points"] == 2400   # 100 days * 24 h
-    assert body["market_points"] == 2400
+    assert response.json() == {"message": "Database reset successfully", "market_points": 2400}  # 100 days * 24 h
 
     expected_tables = [
         "energy_sources", "load", "load_forecast",
@@ -55,7 +56,7 @@ def test_reset_db_creates_tables_and_seeds_data(client, db_manager, schema_manag
 
     load_count = db_query(db_manager, "SELECT COUNT(*) FROM load")[0][0]
     market_count = db_query(db_manager, "SELECT COUNT(*) FROM market")[0][0]
-    assert load_count == 2400
+    assert load_count == 0
     assert market_count == 2400
 
 
@@ -182,6 +183,52 @@ def test_delete_source_also_removes_time_series_data(
 def test_delete_nonexistent_source_returns_404(client, schema_manager):
     response = client.delete("/api/sources/does_not_exist")
     assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Time series and source ids  (historical / forecasted / source-ids)
+# ---------------------------------------------------------------------------
+
+def test_historical_returns_saved_points(client, crud_manager, schema_manager, cleanup):
+    crud_manager.save_to_db("solar", pd.Timestamp("2023-01-01", tz="UTC"), "source123", 42.0)
+    crud_manager.save_to_db("solar", pd.Timestamp("2023-01-02", tz="UTC"), "source123", 43.0)
+
+    params = {"source_id": "source123", "start": "2023-01-01", "end": "2023-01-02"}
+    response = client.get("/api/historical/solar", params=params)
+    assert response.status_code == 200
+    assert response.json() == [
+        {"timestamp": "2023-01-01T00:00:00+00:00", "value": 42.0},
+        {"timestamp": "2023-01-02T00:00:00+00:00", "value": 43.0},
+    ]
+
+
+def test_forecasted_returns_saved_forecast(client, crud_manager, schema_manager, cleanup):
+    forecast = pd.DataFrame(
+        {"value": [100.0, 200.0]},
+        index=pd.to_datetime(["2025-01-01T00:00:00", "2025-01-01T01:00:00"], utc=True),
+    )
+    crud_manager.save_forecast("solar", "solar_1", forecast)
+
+    response = client.get("/api/forecasted/solar", params={"source_id": "solar_1"})
+    assert response.status_code == 200
+    assert response.json() == [
+        {"timestamp": "2025-01-01T00:00:00+00:00", "value": 100.0},
+        {"timestamp": "2025-01-01T01:00:00+00:00", "value": 200.0},
+    ]
+
+
+def test_forecasted_unknown_type_returns_500(client, schema_manager):
+    response = client.get("/api/forecasted/nonexistent")
+    assert response.status_code == 500
+
+
+def test_source_ids_returns_distinct_ids(client, crud_manager, schema_manager, cleanup):
+    crud_manager.save_to_db("solar", pd.Timestamp("2023-01-01 00:00", tz="UTC"), "solar_001", 42.0)
+    crud_manager.save_to_db("solar", pd.Timestamp("2023-01-01 01:00", tz="UTC"), "solar_001", 43.0)
+
+    response = client.get("/api/source-ids/solar")
+    assert response.status_code == 200
+    assert response.json() == ["solar_001"]
 
 
 # ---------------------------------------------------------------------------
@@ -399,3 +446,66 @@ def test_delete_household_cascades_to_vehicles(client, db_manager, schema_manage
 
     rows = db_query(db_manager, "SELECT vehicle_id FROM electric_vehicles WHERE vehicle_id = %s", (vehicle_id,))
     assert len(rows) == 0
+
+
+# ---------------------------------------------------------------------------
+# Batteries  (POST / GET / charge / discharge / DELETE)
+# ---------------------------------------------------------------------------
+
+BATTERY_PAYLOAD_TEMPLATE = {
+    "name": "Test Battery",
+    "capacity_kwh": 100.0,
+    "soc_kwh": 50.0,
+    "max_charge_kw": 20.0,
+    "max_discharge_kw": 20.0,
+    "eta": 0.9,
+}
+
+
+def test_battery_lifecycle_round_trips_through_db(client, db_manager, household_id):
+    payload = {**BATTERY_PAYLOAD_TEMPLATE, "household_id": household_id}
+    post_resp = client.post("/api/batteries", json=payload)
+    assert post_resp.status_code == 200
+    battery = post_resp.json()
+    battery_id = battery["battery_id"]
+    assert battery == {"battery_id": battery_id, **payload}
+
+    rows = db_query(
+        db_manager,
+        "SELECT household_id, name, capacity_kwh, soc_kwh FROM batteries WHERE battery_id = %s",
+        (battery_id,),
+    )
+    assert rows == [(household_id, "Test Battery", 100.0, 50.0)]
+
+    list_resp = client.get("/api/batteries")
+    assert list_resp.status_code == 200
+    assert [b["battery_id"] for b in list_resp.json()] == [battery_id]
+
+    get_resp = client.get(f"/api/batteries/{battery_id}")
+    assert get_resp.status_code == 200
+    assert get_resp.json() == battery
+
+    # charge is capped at max_charge_kw: 20 kW * 1 h * 0.9 = 18 kWh -> 68 kWh
+    charge_resp = client.post(f"/api/batteries/{battery_id}/charge", json={"power_kw": 50.0, "duration_h": 1.0})
+    assert charge_resp.status_code == 200
+    assert charge_resp.json()["actual_power_kw"] == 20.0
+    assert abs(charge_resp.json()["new_soc_kwh"] - 68.0) < 0.01
+
+    # discharge: 9 kW * 1 h / 0.9 = 10 kWh -> 58 kWh
+    discharge_resp = client.post(f"/api/batteries/{battery_id}/discharge", json={"power_kw": 9.0, "duration_h": 1.0})
+    assert discharge_resp.status_code == 200
+    assert abs(discharge_resp.json()["new_soc_kwh"] - 58.0) < 0.01
+    rows = db_query(db_manager, "SELECT soc_kwh FROM batteries WHERE battery_id = %s", (battery_id,))
+    assert abs(rows[0][0] - 58.0) < 0.01
+
+    del_resp = client.delete(f"/api/batteries/{battery_id}")
+    assert del_resp.status_code == 200
+    assert db_query(db_manager, "SELECT battery_id FROM batteries WHERE battery_id = %s", (battery_id,)) == []
+    assert client.get(f"/api/batteries/{battery_id}").status_code == 404
+
+
+def test_post_battery_for_unknown_household_returns_404(client, db_manager, schema_manager, cleanup):
+    payload = {**BATTERY_PAYLOAD_TEMPLATE, "household_id": "hh_doesnotexist"}
+    response = client.post("/api/batteries", json=payload)
+    assert response.status_code == 404
+    assert db_query(db_manager, "SELECT COUNT(*) FROM batteries")[0][0] == 0
