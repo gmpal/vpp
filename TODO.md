@@ -11,7 +11,7 @@ Found while testing with the API console (`make console`). Completed items are r
 
 ### Plan (agreed 2026-09-13)
 1. **Done** (`34b25b5`) — data layer batch: batched inserts, latest-data semantics for `top`, stop generated load being wiped.
-2. **Next** — forecasting status + silent startup hooks; community summary battery fields.
+2. **In progress** — forecasting status + silent startup hooks; community summary battery fields.
 3. **On hold** — optimization model items (wear cost, discharge efficiency) until the uncommitted `dispatch()` / settlement work in `optimization.py` lands, to avoid conflicts.
 4. **Filler** — wind leftovers, 4xx mapping for unknown series, ruff findings.
 5. **Decision pending (maintainer)** — push `develop` / open a PR so CI runs the new tests against the disposable test DB.
