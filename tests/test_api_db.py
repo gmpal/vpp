@@ -558,3 +558,8 @@ def test_optimize_uses_history_and_updates_ev_soc(client, db_manager, crud_manag
     rows = db_query(db_manager, "SELECT soc_kwh FROM electric_vehicles WHERE vehicle_id = %s", (vehicle_id,))
     assert rows[0][0] == pytest.approx(plan[-1]["soc"])
 
+
+def test_household_load_starts_now_in_utc(client, db_manager, household_id):
+    """Generated load must start at the current UTC time, not the server's local wall-clock time."""
+    first = db_query(db_manager, "SELECT MIN(time) FROM household_load WHERE household_id = %s", (household_id,))[0][0]
+    assert abs(pd.Timestamp(first) - pd.Timestamp.now(tz="UTC")) < pd.Timedelta(minutes=5)

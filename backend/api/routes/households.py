@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -34,7 +34,8 @@ def create_household(
         community_id=req.community_id,
     )
 
-    starting_date = datetime.now().strftime("%Y-%m-%d %H:%M")
+    # Timestamps are stored as UTC, so generate from UTC rather than the server's local time.
+    starting_date = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
     raw_load = generate_synthetic_load_data(
         starting_date=starting_date,
         num_days=30,
