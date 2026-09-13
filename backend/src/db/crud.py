@@ -539,6 +539,15 @@ class CrudManager:
         ev_soc_capacity = float(ev_rows[0][1])
         ev_count = int(ev_rows[0][2])
 
+        # Stationary battery SOC aggregation
+        battery_rows = self.db.execute(
+            "SELECT COALESCE(SUM(soc_kwh), 0), COALESCE(SUM(capacity_kwh), 0), COUNT(*) FROM batteries",
+            fetch=True,
+        ) or [(0, 0, 0)]
+        battery_soc_total = float(battery_rows[0][0])
+        battery_soc_capacity = float(battery_rows[0][1])
+        battery_count = int(battery_rows[0][2])
+
         # Household count
         hh_query = "SELECT COUNT(*) FROM households"
         hh_rows = self.db.execute(hh_query, fetch=True) or [(0,)]
@@ -560,7 +569,10 @@ class CrudManager:
             "net": net,
             "ev_soc_total": ev_soc_total,
             "ev_soc_capacity": ev_soc_capacity,
+            "battery_soc_total": battery_soc_total,
+            "battery_soc_capacity": battery_soc_capacity,
             "action": action,
             "household_count": household_count,
             "ev_count": ev_count,
+            "battery_count": battery_count,
         }

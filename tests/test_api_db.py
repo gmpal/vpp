@@ -636,3 +636,15 @@ def test_save_series_round_trips_in_bulk(crud_manager, db_manager, schema_manage
     assert db_query(db_manager, "SELECT COUNT(*), MIN(time), MAX(time) FROM market")[0] == (
         5000, times[0].to_pydatetime(), times[-1].to_pydatetime()
     )
+
+
+def test_community_summary_includes_batteries(client, household_id):
+    for soc in (20.0, 30.0):
+        payload = {**BATTERY_PAYLOAD_TEMPLATE, "household_id": household_id, "soc_kwh": soc}
+        assert client.post("/api/batteries", json=payload).status_code == 200
+
+    summary = client.get("/api/community/summary").json()
+
+    assert summary["battery_count"] == 2
+    assert summary["battery_soc_total"] == pytest.approx(50.0)
+    assert summary["battery_soc_capacity"] == pytest.approx(200.0)
