@@ -10,7 +10,7 @@ from backend.src.streaming.simulator_manager import SimulatorManager
 
 def run_async(coro):
     """Helper: run a coroutine synchronously (no pytest-asyncio needed)."""
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
@@ -84,14 +84,28 @@ def test_load_higher_in_evening(load_sim):
 
 
 def test_generate_reading_dispatches_correctly(solar_sim, wind_sim, load_sim):
-    assert solar_sim._generate_reading() >= 0.0
-    assert wind_sim._generate_reading() >= 0.0
-    assert load_sim._generate_reading() > 0.0
+    solar_value, solar_extra = run_async(solar_sim._generate_reading())
+    wind_value, wind_extra = run_async(wind_sim._generate_reading())
+    load_value, _ = run_async(load_sim._generate_reading())
+    assert solar_value >= 0.0 and solar_extra["data_source"] == "synthetic"
+    assert wind_value >= 0.0 and wind_extra["data_source"] == "synthetic"
+    assert load_value > 0.0
 
 
 def test_generate_reading_unknown_type_returns_zero():
     sim = DeviceSimulator("src_x", "unknown", "comm_1", 0.0, 0.0)
-    assert sim._generate_reading() == 0.0
+    assert run_async(sim._generate_reading()) == (0.0, {})
+
+
+def test_generate_reading_uses_real_data_providers(solar_sim):
+    solar_sim._weather = MagicMock()
+    solar_sim._weather.get_current = AsyncMock(return_value={"irradiance_w_m2": 1000.0, "temperature_c": 25.0})
+    solar_sim._market = MagicMock()
+    solar_sim._market.get_current_price = AsyncMock(return_value=87.5)
+    with patch("backend.src.streaming.device_simulator.np.random.normal", return_value=0.0):
+        value, extra = run_async(solar_sim._generate_reading())
+    assert value == pytest.approx(solar_sim.capacity_kw)  # 1000 W/m2 at 25 C is rated output
+    assert extra == {"irradiance_w_m2": 1000.0, "temperature_c": 25.0, "data_source": "open-meteo", "market_price_eur_mwh": 87.5}
 
 
 # ---------------------------------------------------------------------------

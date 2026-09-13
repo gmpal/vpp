@@ -1,10 +1,9 @@
-# tests/test_crud.py
+# tests/test_db_crud.py
 import pytest
 import pandas as pd
 from unittest.mock import Mock, patch
 from backend.src.db.crud import CrudManager
 from backend.src.db.connection import DatabaseManager
-from backend.src.storage.battery import Battery
 
 
 @pytest.fixture
@@ -20,19 +19,6 @@ def mock_db_manager():
 def crud_manager(mock_db_manager):
     """Fixture to create a CrudManager instance with a mocked db."""
     return CrudManager(mock_db_manager)
-
-
-@pytest.fixture
-def mock_battery():
-    """Fixture to create a mocked Battery object."""
-    battery = Mock(spec=Battery)
-    battery.battery_id = "bat1"
-    battery.capacity_kWh = 100.0
-    battery.current_soc_kWh = 50.0
-    battery.max_charge_kW = 20.0
-    battery.max_discharge_kW = 20.0
-    battery.round_trip_efficiency = 0.9
-    return battery
 
 
 def test_init(crud_manager, mock_db_manager):
@@ -63,27 +49,38 @@ def test_save_to_db_non_renewable(mock_timestamp, crud_manager):
     crud_manager.db.execute.assert_called_once_with(expected_query, (timestamp, 42.0))
 
 
-@patch("pandas.Timestamp")
-def test_save_battery_state(mock_timestamp, crud_manager, mock_battery):
-    """Test saving battery state."""
-    timestamp = pd.Timestamp("2023-01-01")
-    mock_timestamp.now.return_value = timestamp
+def test_create_battery(crud_manager):
+    crud_manager.create_battery("bat1", "hh_1", "Home", 10.0, 5.0, 2.0, 2.0, 0.9)
+    query, params = crud_manager.db.execute.call_args[0]
+    assert query.startswith("INSERT INTO batteries (battery_id, household_id, name,")
+    assert params == ("bat1", "hh_1", "Home", 10.0, 5.0, 2.0, 2.0, 0.9)
 
-    crud_manager.save_battery_state(mock_battery)
 
-    delete_query = "DELETE FROM batteries WHERE battery_id = %s"
-    insert_query = """
-        INSERT INTO batteries
-        (time, battery_id, capacity_kWh, soc_kWh, max_charge_kW, max_discharge_kW, eta)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-    expected_calls = [
-        ((delete_query, ("bat1",)), {}),
-        ((insert_query, (timestamp, "bat1", 100.0, 50.0, 20.0, 20.0, 0.9)), {}),
-    ]
-    calls = [(call[0], call[1]) for call in crud_manager.db.execute.call_args_list]
-    assert crud_manager.db.execute.call_count == 2
-    assert calls == expected_calls
+def test_get_battery_maps_row(crud_manager):
+    crud_manager.db.execute.return_value = [("bat1", "hh_1", "Home", 10.0, 5.0, 2.0, 2.0, 0.9)]
+    assert crud_manager.get_battery("bat1") == {
+        "battery_id": "bat1", "household_id": "hh_1", "name": "Home", "capacity_kwh": 10.0,
+        "soc_kwh": 5.0, "max_charge_kw": 2.0, "max_discharge_kw": 2.0, "eta": 0.9,
+    }
+    assert crud_manager.db.execute.call_args[0][1] == ("bat1",)
+
+
+def test_get_battery_missing_returns_none(crud_manager):
+    crud_manager.db.execute.return_value = []
+    assert crud_manager.get_battery("nope") is None
+
+
+def test_get_all_batteries(crud_manager):
+    crud_manager.db.execute.return_value = [("b1", "h", "n", 1.0, 0.5, 1.0, 1.0, 0.95), ("b2", "h", "n", 2.0, 1.0, 1.0, 1.0, 0.95)]
+    assert [b["battery_id"] for b in crud_manager.get_all_batteries()] == ["b1", "b2"]
+
+
+def test_update_and_delete_battery(crud_manager):
+    crud_manager.update_battery_soc("bat1", 7.5)
+    crud_manager.delete_battery("bat1")
+    calls = crud_manager.db.execute.call_args_list
+    assert calls[0][0] == ("UPDATE batteries SET soc_kwh = %s WHERE battery_id = %s", (7.5, "bat1"))
+    assert calls[1][0] == ("DELETE FROM batteries WHERE battery_id = %s", ("bat1",))
 
 
 def test_load_historical_data_full_filter(crud_manager):
@@ -98,11 +95,7 @@ def test_load_historical_data_full_filter(crud_manager):
         expected_query, ["source123", "2023-01-01", "2023-01-02"], fetch=True
     )
 
-    expected_df = pd.DataFrame(
-        [("2023-01-01", 42.0), ("2023-01-02", 43.0)], columns=["time", "value"]
-    ).set_index("time")
-    expected_df.index = pd.to_datetime(expected_df.index)
-    pd.testing.assert_frame_equal(df, expected_df)
+    assert df == [{"time": "2023-01-01", "value": 42.0}, {"time": "2023-01-02", "value": 43.0}]
 
 
 def test_load_historical_data_no_filter(crud_manager):
@@ -112,8 +105,7 @@ def test_load_historical_data_no_filter(crud_manager):
 
     expected_query = "SELECT time, value FROM load  ORDER BY time"
     crud_manager.db.execute.assert_called_once_with(expected_query, [], fetch=True)
-    assert df.empty
-    assert list(df.columns) == ["value"]
+    assert df == []
 
 
 def test_save_forecast_with_source_id(crud_manager):
@@ -169,12 +161,10 @@ def test_load_forecasted_data_renewable(crud_manager):
         expected_query, ["source123", "2023-01-01", "2023-01-02"], fetch=True
     )
 
-    expected_df = pd.DataFrame(
-        [("2023-01-01", "source123", 42.0), ("2023-01-02", "source123", 43.0)],
-        columns=["time", "source_id", "yhat"],
-    ).set_index("time")
-    expected_df.index = pd.to_datetime(expected_df.index)
-    pd.testing.assert_frame_equal(df, expected_df)
+    assert df == [
+        {"time": "2023-01-01", "source_id": "source123", "yhat": 42.0},
+        {"time": "2023-01-02", "source_id": "source123", "yhat": 43.0},
+    ]
 
 
 def test_load_forecasted_data_load(crud_manager):
@@ -193,11 +183,7 @@ def test_load_forecasted_data_load(crud_manager):
         fetch=True,
     )
 
-    expected_df = pd.DataFrame(
-        [("2023-01-01", 42.0)], columns=["time", "yhat"]
-    ).set_index("time")
-    expected_df.index = pd.to_datetime(expected_df.index)
-    pd.testing.assert_frame_equal(df, expected_df)
+    assert df == [{"time": "2023-01-01", "yhat": 42.0}]
 
 
 def test_query_source_ids(crud_manager):

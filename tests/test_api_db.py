@@ -3,14 +3,7 @@ API-to-DB integration tests.
 
 Verifies that each API call produces the expected database state.
 
-Prerequisites:
-    docker run -d --name timescale-test -p 5432:5432 \
-        -e POSTGRES_PASSWORD=testpass timescale/timescaledb-ha:pg17
-
-Or against the dev container:
-    conda run -n vpp --no-capture-output env \\
-        TIMESCALEDB_HOST=localhost POSTGRES_USER=gmpal POSTGRES_PASSWORD=postgresso POSTGRES_DB=postgres \\
-        pytest tests/test_api_db.py -v
+Requires the disposable test database: `make test-int`.
 """
 import pytest
 import pandas as pd

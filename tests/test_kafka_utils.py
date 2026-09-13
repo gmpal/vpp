@@ -1,3 +1,4 @@
+from datetime import datetime
 import pytest
 import pandas as pd
 from unittest.mock import Mock, call, MagicMock
@@ -177,33 +178,14 @@ def test_kafka_consume_centralized(mocker):
     mock_crud_manager = mocker.patch("backend.src.streaming.communication.CrudManager")
     mock_crud_instance = mock_crud_manager.return_value
 
-    # Mock pd.to_datetime
-    mock_to_datetime = mocker.patch("pandas.to_datetime")
-
-    # Call the function
     kafka_consume_centralized()
 
-    # Assertions
-
-    # 2. DatabaseManager and CrudManager were instantiated
+    # DatabaseManager and CrudManager were instantiated
     mock_db_manager.assert_called_once()
     mock_crud_manager.assert_called_once_with(mock_db_manager.return_value)
 
-    # 3. save_to_db was called for each message
-    assert mock_crud_instance.save_to_db.call_count == 1
-    expected_calls = [
-        mocker.call("solar", mock_to_datetime.return_value, "solar_1", 10.0),
-    ]
-    mock_crud_instance.save_to_db.assert_has_calls(expected_calls, any_order=False)
+    # save_to_db received the parsed timestamp for each legacy-topic message
+    mock_crud_instance.save_to_db.assert_called_once_with("solar", datetime(2025, 1, 1, 0, 0), "solar_1", 10.0)
 
-    # 4. pd.to_datetime was called with correct timestamps
-    assert mock_to_datetime.call_count == 1
-    mock_to_datetime.assert_has_calls(
-        [
-            mocker.call("2025-01-01T00:00:00"),
-        ],
-        any_order=False,
-    )
-
-    # 5. _get_server_info was called once
+    # _get_server_info was called once
     mock_get_server_info.assert_called_once()
