@@ -1,16 +1,16 @@
-import asyncio
 import os
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import admin, batteries, community, data, forecasting, households, optimization, sources, vehicles, weather
 from backend.src.db import DatabaseManager, SchemaManager
+from backend.src.utils.logger import get_logger
 
-app = FastAPI()
+logger = get_logger(__name__)
 
 
-@app.on_event("startup")
 def ensure_core_tables():
     """Apply idempotent schema migrations for databases created by older versions."""
     try:
@@ -18,11 +18,11 @@ def ensure_core_tables():
         schema = SchemaManager(db)
         schema._migrate_relax_legacy_user_scoping()
         schema._migrate_allow_charge_only_evs()
-    except Exception:
-        pass  # DB may not be available yet
+    except Exception as e:
+        # The API still starts (the DB may come up later), but say so: migrations were skipped.
+        logger.warning("Startup schema migrations skipped: %s", e)
 
 
-@app.on_event("startup")
 async def resume_active_simulators():
     """On startup, restart device simulators for all active energy sources."""
     try:
@@ -47,8 +47,20 @@ async def resume_active_simulators():
                 latitude=lat,
                 longitude=lon,
             )
-    except Exception:
-        pass  # DB not ready or no sources yet — simulators will be started on demand
+        if rows:
+            logger.info("Resumed %d device simulators", len(rows))
+    except Exception as e:
+        logger.warning("Device simulators not resumed at startup (they start on demand): %s", e)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    ensure_core_tables()
+    await resume_active_simulators()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 # In production set ALLOWED_ORIGINS=https://vpp.digital in the environment.

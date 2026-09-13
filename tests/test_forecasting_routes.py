@@ -1,4 +1,5 @@
-"""Unit tests for forecasting pipeline triggers and status (no database, no subprocesses)."""
+"""Unit tests for forecasting pipeline triggers/status and API startup hooks (no database, no subprocesses)."""
+import logging
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -84,3 +85,13 @@ def test_second_trigger_is_rejected_while_running(path, task_name, running_key):
     assert second.status_code == 400
     assert "already in progress" in second.json()["detail"]
 
+
+def test_startup_failures_are_logged_and_do_not_block_the_api(caplog):
+    with patch.object(main, "DatabaseManager", side_effect=RuntimeError("db down")), \
+         caplog.at_level(logging.WARNING, logger="backend.api.main"):
+        with TestClient(main.app) as client:  # runs the lifespan
+            assert client.get("/health").json() == {"status": "ok"}
+
+    messages = [r.getMessage() for r in caplog.records if r.name == "backend.api.main"]
+    assert "Startup schema migrations skipped: db down" in messages
+    assert "Device simulators not resumed at startup (they start on demand): db down" in messages
