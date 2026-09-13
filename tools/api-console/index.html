@@ -216,8 +216,10 @@ const num = (id) => Number($(id).value);
 const charts = {};
 const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#4b5563"];
 
-// Remember the backend URL between visits.
+// Backend URL: ?api=... wins, then the last URL used, then the default.
 try { const saved = localStorage.getItem("vpp-console-base"); if (saved) $("base").value = saved; } catch {}
+const apiParam = new URLSearchParams(location.search).get("api");
+if (apiParam) { $("base").value = apiParam; try { localStorage.setItem("vpp-console-base", apiParam); } catch {} }
 $("base").addEventListener("change", () => { try { localStorage.setItem("vpp-console-base", val("base")); } catch {} });
 
 function escapeHtml(s) {
