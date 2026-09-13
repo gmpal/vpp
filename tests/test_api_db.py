@@ -509,3 +509,17 @@ def test_post_battery_for_unknown_household_returns_404(client, db_manager, sche
     response = client.post("/api/batteries", json=payload)
     assert response.status_code == 404
     assert db_query(db_manager, "SELECT COUNT(*) FROM batteries")[0][0] == 0
+
+
+def test_post_charge_only_vehicle(client, db_manager, household_id):
+    """EVs without vehicle-to-grid (max_discharge_kw = 0) can be created and cannot discharge."""
+    payload = {**EV_PAYLOAD_TEMPLATE, "household_id": household_id, "max_discharge_kw": 0.0}
+    response = client.post("/api/vehicles", json=payload)
+    assert response.status_code == 200
+    vehicle_id = response.json()["vehicle_id"]
+    assert response.json()["max_discharge_kw"] == 0.0
+
+    discharge_resp = client.post(f"/api/vehicles/{vehicle_id}/discharge", json={"power_kw": 10.0, "duration_h": 1.0})
+    assert discharge_resp.status_code == 200
+    rows = db_query(db_manager, "SELECT soc_kwh FROM electric_vehicles WHERE vehicle_id = %s", (vehicle_id,))
+    assert rows[0][0] == 30.0

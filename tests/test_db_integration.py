@@ -2,8 +2,9 @@
 """
 Requires the disposable test database: `make test-int`.
 """
-import pytest
 import pandas as pd
+import psycopg2
+import pytest
 
 pytestmark = pytest.mark.integration
 
@@ -67,3 +68,43 @@ def test_save_and_load_forecast(crud_manager, schema_manager, cleanup):
         {"time": pd.Timestamp("2023-01-01", tz="UTC").to_pydatetime(), "source_id": "source123", "yhat": 42.0},
         {"time": pd.Timestamp("2023-01-02", tz="UTC").to_pydatetime(), "source_id": "source123", "yhat": 43.0},
     ]
+
+
+def _insert_ev(db_manager, vehicle_id, max_discharge_kw):
+    db_manager.execute(
+        "INSERT INTO electric_vehicles (vehicle_id, household_id, name, capacity_kwh, soc_kwh, "
+        "max_charge_kw, max_discharge_kw, eta) VALUES (%s, 'hh_ev', 'EV', 60, 30, 11, %s, 0.95)",
+        (vehicle_id, max_discharge_kw),
+    )
+
+
+@pytest.fixture
+def ev_household(db_manager, schema_manager, cleanup):
+    db_manager.execute(
+        "INSERT INTO households (household_id, name, latitude, longitude) VALUES ('hh_ev', 'EV home', 50.85, 4.35)"
+    )
+
+
+def test_charge_only_ev_is_accepted(db_manager, ev_household):
+    """EVs without vehicle-to-grid have max_discharge_kw = 0; negative stays invalid."""
+    _insert_ev(db_manager, "ev_v1g", 0.0)
+    assert db_manager.execute("SELECT max_discharge_kw FROM electric_vehicles", fetch=True) == [(0.0,)]
+
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        _insert_ev(db_manager, "ev_negative", -1.0)
+
+
+def test_charge_only_migration_relaxes_legacy_constraint(db_manager, schema_manager, ev_household):
+    db_manager.execute("""
+        ALTER TABLE electric_vehicles DROP CONSTRAINT electric_vehicles_max_discharge_kw_check;
+        ALTER TABLE electric_vehicles ADD CONSTRAINT electric_vehicles_max_discharge_kw_check
+            CHECK (max_discharge_kw > 0);
+    """)
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        _insert_ev(db_manager, "ev_v1g", 0.0)
+
+    schema_manager._migrate_allow_charge_only_evs()
+    schema_manager._migrate_allow_charge_only_evs()  # second run is a no-op
+    _insert_ev(db_manager, "ev_v1g", 0.0)
+    with pytest.raises(psycopg2.errors.CheckViolation):
+        _insert_ev(db_manager, "ev_negative", -1.0)

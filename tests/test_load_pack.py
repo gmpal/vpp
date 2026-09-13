@@ -77,7 +77,7 @@ def sample_pack_dir(tmp_path):
                 "capacity_kwh": 60.0,
                 "soc_kwh": 30.0,
                 "max_charge_kw": 11.0,
-                "max_discharge_kw": 11.0,  # schema requires > 0 (build_packs emits 0.0)
+                "max_discharge_kw": 0.0,  # charge-only, as build_packs emits
                 "eta": 0.95,
                 "status": "home",
             },

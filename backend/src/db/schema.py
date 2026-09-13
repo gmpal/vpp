@@ -193,7 +193,7 @@ class SchemaManager:
             capacity_kwh DOUBLE PRECISION NOT NULL CHECK (capacity_kwh > 0),
             soc_kwh DOUBLE PRECISION NOT NULL CHECK (soc_kwh >= 0),
             max_charge_kw DOUBLE PRECISION NOT NULL CHECK (max_charge_kw > 0),
-            max_discharge_kw DOUBLE PRECISION NOT NULL CHECK (max_discharge_kw > 0),
+            max_discharge_kw DOUBLE PRECISION NOT NULL CHECK (max_discharge_kw >= 0),  -- 0 = charge-only
             eta DOUBLE PRECISION NOT NULL CHECK (eta > 0 AND eta <= 1),
             status VARCHAR(20) DEFAULT 'home' CHECK (status IN ('home', 'away')),
             latitude FLOAT,
@@ -202,6 +202,27 @@ class SchemaManager:
         );
         """
         self.db.execute(query)
+
+    def _migrate_allow_charge_only_evs(self):
+        """Idempotent migration: let electric_vehicles.max_discharge_kw be 0 (charge-only EVs).
+
+        Older schemas required > 0, which rejected the charge-only EVs that
+        research packs contain. Only rewrites the constraint when it is the old one.
+        """
+        self.db.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'electric_vehicles_max_discharge_kw_check'
+                  AND pg_get_constraintdef(oid) LIKE '%> (0)%'
+            ) THEN
+                ALTER TABLE electric_vehicles DROP CONSTRAINT electric_vehicles_max_discharge_kw_check;
+                ALTER TABLE electric_vehicles ADD CONSTRAINT electric_vehicles_max_discharge_kw_check
+                    CHECK (max_discharge_kw >= 0);
+            END IF;
+        END $$;
+        """)
 
     def _create_household_load_table(self):
         query = """
@@ -271,6 +292,7 @@ class SchemaManager:
         self._create_household_load_table()  # already uses IF NOT EXISTS
         self._create_batteries_table()  # already uses IF NOT EXISTS
         self._migrate_relax_legacy_user_scoping()  # idempotent
+        self._migrate_allow_charge_only_evs()  # idempotent: only rewrites the old constraint
         self._migrate_add_community_id()  # idempotent: ADD COLUMN IF NOT EXISTS
         self._migrate_household_load_fk()  # idempotent: ADD CONSTRAINT IF NOT EXISTS
         self._migrate_add_building_geometry()  # idempotent: ADD COLUMN IF NOT EXISTS

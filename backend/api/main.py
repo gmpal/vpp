@@ -17,6 +17,7 @@ def ensure_core_tables():
         db = DatabaseManager()
         schema = SchemaManager(db)
         schema._migrate_relax_legacy_user_scoping()
+        schema._migrate_allow_charge_only_evs()
     except Exception:
         pass  # DB may not be available yet
 
