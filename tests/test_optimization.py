@@ -147,49 +147,108 @@ def test_missing_required_input_raises(missing, message):
         load_optimization_data(start=WINDOW_START, crud=FakeCrud(history=history))
 
 
-def _ev(max_discharge_kw):
-    return {"vehicle_id": "ev1", "capacity_kwh": 60.0, "soc_kwh": 30.0, "max_charge_kw": 11.0,
+def _ev(max_discharge_kw, soc_kwh=10.0):
+    return {"vehicle_id": "ev1", "capacity_kwh": 60.0, "soc_kwh": soc_kwh, "max_charge_kw": 11.0,
             "max_discharge_kw": max_discharge_kw, "eta": 0.9}
 
 
-@pytest.fixture
-def two_price_crud():
+MIDDAY = range(10, 16)
+
+
+def _midday_solar_crud(prices, solar_kw=8.0, load_kw=1.0):
+    """Six hours of midday solar surplus on top of a flat household load."""
     window = hours(WINDOW_START, 24)
-    prices = [0.05 if h < 6 else 0.40 for h in range(24)]
-    return FakeCrud(history={"load": series(window, [1.0] * 24), "market": series(window, prices)}), prices
+    solar = [solar_kw if h in MIDDAY else 0.0 for h in range(24)]
+    return FakeCrud(history={
+        "solar": series(window, solar, "pv"),
+        "load": series(window, [load_kw] * 24),
+        "market": series(window, prices),
+    })
 
 
-def test_optimize_returns_an_hourly_plan(two_price_crud):
-    crud, prices = two_price_crud
-    result = optimize([_ev(0.0)], start=WINDOW_START, crud=crud)
+CHEAP_MIDDAY = [0.02 if h in MIDDAY else 0.35 for h in range(24)]
+
+
+def test_optimize_returns_an_hourly_plan():
+    result = optimize([_ev(0.0)], start=WINDOW_START, crud=_midday_solar_crud(CHEAP_MIDDAY), sell_price_factor=0.3)
 
     assert len(result) == 24
     assert (result["status"] == "Optimal").all()
-    assert result["price"].tolist() == prices
+    assert result["price"].tolist() == CHEAP_MIDDAY
+    assert result["sell_price"].tolist() == pytest.approx([0.3 * p for p in CHEAP_MIDDAY])
     assert set(result.columns) >= {"time", "battery_id", "charge", "discharge", "soc", "grid_buy", "grid_sell",
-                                   "solar", "load", "price", "total_cost"}
+                                   "solar", "load", "price", "sell_price", "total_cost",
+                                   "stored_energy_price", "stored_energy_value", "objective"}
 
 
-def test_charging_costs_money(two_price_crud):
-    """Charging draws from the grid, so a charge-only EV can never beat the load-only cost."""
-    crud, prices = two_price_crud
-    load_only_cost = sum(1.0 * p for p in prices)
+def test_costs_buy_at_market_price_and_sell_at_the_factor():
+    result = optimize([_ev(0.0)], start=WINDOW_START, crud=_midday_solar_crud(CHEAP_MIDDAY), sell_price_factor=0.3)
 
-    result = optimize([_ev(0.0)], start=WINDOW_START, crud=crud)
+    grid_cost = (result["price"] * result["grid_buy"] - result["sell_price"] * result["grid_sell"]).sum()
+    assert result["total_cost"].iloc[0] == pytest.approx(grid_cost)
+    stored_price = sum(CHEAP_MIDDAY) / 24
+    assert result["stored_energy_price"].iloc[0] == pytest.approx(stored_price)
+    assert result["stored_energy_value"].iloc[0] == pytest.approx(stored_price * (result["soc"].iloc[-1] - 10.0))
+    assert result["objective"].iloc[0] == pytest.approx(grid_cost - result["stored_energy_value"].iloc[0])
 
-    assert result["discharge"].abs().max() == 0
-    assert result["total_cost"].iloc[0] == pytest.approx(load_only_cost + (result["charge"] * result["price"]).sum())
-    assert result["total_cost"].iloc[0] >= load_only_cost - 1e-6
+
+def test_cheap_solar_surplus_is_stored_rather_than_sold():
+    """Selling midday surplus earns 0.006/kWh; storing it is worth 0.9 x the average price."""
+    result = optimize([_ev(0.0)], start=WINDOW_START, crud=_midday_solar_crud(CHEAP_MIDDAY), sell_price_factor=0.3)
+
+    midday = result.iloc[list(MIDDAY)]
+    surplus = (midday["solar"] - midday["load"]).sum()
+    assert midday["grid_sell"].sum() == pytest.approx(0.0, abs=1e-6)
+    # All surplus goes into the EV, topped up with 0.02 grid power until the battery is full.
+    assert midday["charge"].sum() >= surplus - 1e-6
+    assert result["soc"].iloc[max(MIDDAY)] == pytest.approx(60.0)
 
 
-def test_discharging_covers_expensive_load(two_price_crud):
-    """A V2G EV may discharge its stored energy into expensive hours, but cannot create energy."""
-    crud, prices = two_price_crud
-    load_only_cost = sum(1.0 * p for p in prices)
+def test_surplus_is_sold_when_selling_pays_more_than_storing():
+    """With a flat price and full sell price, a stored kWh (worth 0.9 x price) loses to selling it."""
+    result = optimize([_ev(0.0)], start=WINDOW_START, crud=_midday_solar_crud([0.30] * 24), sell_price_factor=1.0)
 
-    result = optimize([_ev(11.0)], start=WINDOW_START, crud=crud)
+    assert result["charge"].sum() == pytest.approx(0.0, abs=1e-6)
+    assert result["grid_sell"].sum() == pytest.approx(7.0 * 6)
 
+
+def test_grid_power_is_not_bought_to_fill_the_battery_at_the_average_price():
+    """Charging from the grid at a price above eta x the stored-energy price is not worth it."""
+    crud = _midday_solar_crud([0.30] * 24, solar_kw=0.0)
+    result = optimize([_ev(0.0)], start=WINDOW_START, crud=crud, sell_price_factor=0.3)
+    assert result["charge"].sum() == pytest.approx(0.0, abs=1e-6)
+
+
+def test_v2g_ev_covers_expensive_load_without_selling_stored_energy():
+    """Cheap morning, expensive afternoon, no solar: stored energy is worth 0.30/kWh.
+
+    Discharging saves 0.50/kWh in the afternoon, but selling there only earns 0.15 and
+    there is no cheaper refill afterwards, so the EV covers the load and sells nothing.
+    """
+    prices = [0.10] * 12 + [0.50] * 12
+    crud = _midday_solar_crud(prices, solar_kw=0.0)
+    result = optimize([_ev(11.0, soc_kwh=30.0)], start=WINDOW_START, crud=crud, sell_price_factor=0.3)
+
+    afternoon = result.iloc[12:]
+    assert afternoon["discharge"].tolist() == pytest.approx([1.0] * 12)  # exactly the load
+    assert afternoon["grid_buy"].sum() == pytest.approx(0.0, abs=1e-6)
+    assert result["grid_sell"].sum() == pytest.approx(0.0, abs=1e-6)
+
+
+def test_energy_is_conserved():
+    result = optimize([_ev(11.0, soc_kwh=30.0)], start=WINDOW_START, crud=_midday_solar_crud(CHEAP_MIDDAY),
+                      sell_price_factor=0.3)
+
+    soc_change = result["soc"].iloc[-1] - 30.0
+    assert soc_change == pytest.approx(0.9 * result["charge"].sum() - result["discharge"].sum())
     grid_net = (result["grid_buy"] - result["grid_sell"]).sum()
-    assert grid_net == pytest.approx(24.0 + result["charge"].sum() - result["discharge"].sum())
-    assert result["discharge"].sum() <= 30.0 + 0.9 * result["charge"].sum() + 1e-6
-    assert result["total_cost"].iloc[0] < load_only_cost
+    assert grid_net == pytest.approx((result["load"] - result["solar"]).sum() + result["charge"].sum()
+                                     - result["discharge"].sum())
+
+
+def test_sell_price_factor_defaults_to_settings(monkeypatch):
+    from backend.src.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "optimization_sell_price_factor", 0.5)
+    result = optimize([_ev(0.0)], start=WINDOW_START, crud=_midday_solar_crud(CHEAP_MIDDAY))
+    assert result["sell_price"].tolist() == pytest.approx([0.5 * p for p in CHEAP_MIDDAY])

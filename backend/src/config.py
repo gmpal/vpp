@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     mlflow_backend_store_uri: str = Field(default="file:///app/mlruns", description="MLflow backend store")
     mlflow_default_artifact_root: str = Field(default="file:///app/artifacts", description="MLflow artifact root")
 
+    # Optimization
+    optimization_sell_price_factor: float = Field(
+        default=0.3,
+        description="Price received for energy sold to the grid, as a fraction of the market (buy) price",
+    )
+
     # API Configuration
     backend_port: int = Field(default=8000, description="Backend API port")
     cors_origins: List[str] = Field(default=["*"], description="CORS allowed origins")

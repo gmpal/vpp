@@ -13,14 +13,19 @@ logger = get_logger(__name__)
 
 @router.post("/optimize", response_model=List[Dict[str, Any]])
 def optimize_strategy(
+    sell_price_factor: float | None = None,
     crud: CrudManager = Depends(get_crud_manager),
 ):
+    """Plan EV charging for the next 24 h.
+
+    sell_price_factor overrides the configured fraction of the market price paid for energy sold.
+    """
     evs = crud.get_home_evs()
     if not evs:
         raise HTTPException(400, "No EVs with status='home' available for optimization")
 
     try:
-        result_df = optimize(evs=evs, crud=crud)
+        result_df = optimize(evs=evs, crud=crud, sell_price_factor=sell_price_factor)
         for ev in evs:
             final_soc_rows = result_df.loc[result_df["battery_id"] == ev["vehicle_id"], "soc"]
             if not final_soc_rows.empty:

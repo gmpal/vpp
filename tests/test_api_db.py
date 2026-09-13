@@ -559,6 +559,17 @@ def test_optimize_uses_history_and_updates_ev_soc(client, db_manager, crud_manag
     assert rows[0][0] == pytest.approx(plan[-1]["soc"])
 
 
+def test_optimize_accepts_sell_price_factor(client, crud_manager, household_id):
+    client.post("/api/vehicles", json={**EV_PAYLOAD_TEMPLATE, "household_id": household_id})
+    _seed_past_market_prices(crud_manager)
+
+    response = client.post("/api/optimize", params={"sell_price_factor": 0.5})
+    assert response.status_code == 200
+    plan = response.json()
+    assert all(row["sell_price"] == pytest.approx(0.5 * row["price"]) for row in plan)
+    assert plan[0]["objective"] == pytest.approx(plan[0]["total_cost"] - plan[0]["stored_energy_value"])
+
+
 def test_household_load_starts_now_in_utc(client, db_manager, household_id):
     """Generated load must start at the current UTC time, not the server's local wall-clock time."""
     first = db_query(db_manager, "SELECT MIN(time) FROM household_load WHERE household_id = %s", (household_id,))[0][0]

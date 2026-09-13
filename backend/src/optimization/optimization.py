@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 import pandas as pd
 import pulp
 
+from backend.src.config import get_settings
 from backend.src.db import CrudManager, DatabaseManager
 from backend.src.utils.logger import get_logger
 
@@ -119,11 +120,21 @@ def load_optimization_data(start: str = None, end: str = None, crud: CrudManager
     return df
 
 
+def stored_energy_price(buy_prices: pd.Series) -> float:
+    """Value of a kWh left in an EV at the end of the window: the average buy price, never negative.
+
+    Without it the optimizer sees stored energy as worthless, so charge-only EVs never charge
+    and V2G EVs drain to empty.
+    """
+    return max(float(buy_prices.mean()), 0.0)
+
+
 def optimize(
     evs: List[Dict[str, Any]],
     start: str = None,
     end: str = None,
     crud: CrudManager | None = None,
+    sell_price_factor: float | None = None,
 ) -> pd.DataFrame:
     """
     Performs an optimization over the specified time range [start, end],
@@ -141,12 +152,21 @@ def optimize(
         End time (exclusive); defaults to start + 24 h.
     crud : CrudManager
         Data access; defaults to the module-level manager.
+    sell_price_factor : float
+        Sell price as a fraction of the buy (market) price; defaults to the
+        ``optimization_sell_price_factor`` setting.
+
+    The objective minimizes grid cost (buying at the market price, selling at
+    sell_price_factor times it) minus the value of the energy added to the EVs,
+    priced by ``stored_energy_price``. So surplus is stored rather than sold when
+    eta * stored_energy_price exceeds the sell price.
 
     Returns
     -------
     pd.DataFrame
         Columns: time, battery_id, charge, discharge, soc, grid_buy, grid_sell,
-        solar, load, price, status, total_cost.
+        solar, load, price, sell_price, status, total_cost (net grid cost),
+        stored_energy_price, stored_energy_value (value of the SOC change) and objective.
 
     Raises
     ------
@@ -154,6 +174,10 @@ def optimize(
         If load or price data is missing for the window.
     """
     df = load_optimization_data(start=start, end=end, crud=crud)
+    if sell_price_factor is None:
+        sell_price_factor = get_settings().optimization_sell_price_factor
+    df["sell_price"] = df["price"] * sell_price_factor
+    storage_price = stored_energy_price(df["price"])
 
     time_index = df.index
     time_steps = range(len(time_index))
@@ -211,8 +235,14 @@ def optimize(
         problem += grid_buy[t] <= -net_excess + M * delta[t]
         problem += grid_buy[t] <= M * (1 - delta[t])
 
-    total_cost = pulp.lpSum([df["price"].iloc[t] * (grid_buy[t] - grid_sell[t]) for t in time_steps])
-    problem += total_cost
+    total_cost = pulp.lpSum(
+        [df["price"].iloc[t] * grid_buy[t] - df["sell_price"].iloc[t] * grid_sell[t] for t in time_steps]
+    )
+    last = len(time_index) - 1
+    stored_energy_value = storage_price * pulp.lpSum(
+        [battery_soc[(ev["vehicle_id"], last)] - ev["soc_kwh"] for ev in evs]
+    )
+    problem += total_cost - stored_energy_value
 
     problem.solve(pulp.PULP_CBC_CMD(msg=0))
     status = pulp.LpStatus[problem.status]
@@ -235,11 +265,15 @@ def optimize(
                 "solar": float(df["solar"].iloc[t]),
                 "load": float(df["load"].iloc[t]),
                 "price": float(df["price"].iloc[t]),
+                "sell_price": float(df["sell_price"].iloc[t]),
             })
 
     df_results = pd.DataFrame(results)
     df_results["status"] = status
     df_results["total_cost"] = pulp.value(total_cost)
+    df_results["stored_energy_price"] = storage_price
+    df_results["stored_energy_value"] = pulp.value(stored_energy_value)
+    df_results["objective"] = pulp.value(problem.objective)
 
     logger.debug("Optimization result shape: %s", df_results.shape)
     return df_results
