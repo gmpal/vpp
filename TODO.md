@@ -10,20 +10,20 @@
 Found while testing with the API console (`make console`). Completed items are recorded in `CHANGELOG.md`.
 
 ### Plan (agreed 2026-09-13)
-1. **In progress** — data layer batch: batched inserts, latest-data semantics for `top`, stop generated load being wiped.
+1. **Done** (`34b25b5`) — data layer batch: batched inserts, latest-data semantics for `top`, stop generated load being wiped.
 2. **Next** — forecasting status + silent startup hooks; community summary battery fields.
 3. **On hold** — optimization model items (wear cost, discharge efficiency) until the uncommitted `dispatch()` / settlement work in `optimization.py` lands, to avoid conflicts.
 4. **Filler** — wind leftovers, 4xx mapping for unknown series, ruff findings.
 5. **Decision pending (maintainer)** — push `develop` / open a PR so CI runs the new tests against the disposable test DB.
 
 ### Bugs
-- [ ] **Realtime endpoint returns the oldest data** — `GET /api/realtime-data/{source}` calls `load_historical_data(top=100)`, which orders by time ascending and limits, so without `since` it returns the first 100 points ever stored. `/api/historical?top=N` behaves the same.
-- [ ] **Generated load is wiped by household changes** — `POST /api/data/generate-system-data` writes synthetic rows to `load`, but creating/deleting a household rebuilds `load` from `household_load` (DELETE first). Reset-db already treats load as household-derived; the endpoint should stop writing load.
+- [x] **Realtime endpoint returns the oldest data** — fixed 2026-09-13 (`34b25b5`): `top` without a lower bound keeps the latest points; `since` is exclusive.
+- [x] **Generated load is wiped by household changes** — fixed 2026-09-13 (`34b25b5`): the endpoint replaces market prices and rebuilds load from households instead of writing synthetic load.
 - [ ] **Forecasting status reports success on failure** — `run_training` / `run_inference` ignore the subprocess return code and set `last_training` / `last_inference` anyway. Script paths (`/app/backend/...`) and the MLflow URI (`http://mlflow:5000`) are hardcoded, so they only work inside Docker.
 - [ ] **Community summary ignores batteries** — `CrudManager.get_community_summary` never fills `battery_count`, `battery_soc_total`, `battery_soc_capacity`; they are always 0.
 
 ### Performance
-- [ ] **Row-by-row inserts, one connection each** — `save_to_db` opens and commits a connection per row: reset/init-db ≈ 37 s for 2,400 market rows, generate-system-data ≈ 2.5 min. Batch with `execute_values`.
+- [x] **Row-by-row inserts, one connection each** — fixed 2026-09-13 (`34b25b5`): `CrudManager.save_series` batches with `execute_values`; 2,400 market rows 62.9 s → 0.16 s (measured). `save_to_db` remains for single streamed readings from the Kafka consumer.
 - [ ] **N+1 queries in `GET /api/sources`** — one extra query per source for its latest value.
 - [ ] **Sync DB calls on the event loop** — `POST /api/sources` and `DELETE /api/sources/{id}` are `async def` (to schedule simulators) but call blocking psycopg2; short queries, but they block other requests meanwhile.
 
