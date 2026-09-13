@@ -191,6 +191,17 @@ class CrudManager:
             results.append(dict(zip(columns, row)))
         return results
 
+    def get_time_bounds(self, table: str, source_id: str | None = None):
+        """Return (first, last) timestamps in a time-series table, or None when it is empty."""
+        self._validate_table_name(table)
+        if source_id and table in self.db.renewables:
+            rows = self.db.execute(f"SELECT MIN(time), MAX(time) FROM {table} WHERE source_id = %s", (source_id,), fetch=True)
+        else:
+            rows = self.db.execute(f"SELECT MIN(time), MAX(time) FROM {table}", fetch=True)
+        if not rows or rows[0][0] is None:
+            return None
+        return rows[0][0], rows[0][1]
+
     def query_source_ids(self, source: str) -> list[str]:
         self._validate_table_name(source)
         query = f"SELECT DISTINCT source_id FROM {source};"

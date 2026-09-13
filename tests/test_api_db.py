@@ -523,3 +523,38 @@ def test_post_charge_only_vehicle(client, db_manager, household_id):
     assert discharge_resp.status_code == 200
     rows = db_query(db_manager, "SELECT soc_kwh FROM electric_vehicles WHERE vehicle_id = %s", (vehicle_id,))
     assert rows[0][0] == 30.0
+
+
+# ---------------------------------------------------------------------------
+# POST /api/optimize
+# ---------------------------------------------------------------------------
+
+def _seed_past_market_prices(crud_manager, days=2):
+    """Prices only in the past, as init-db seeds them: optimization must fall back to a daily profile."""
+    for t in pd.date_range("2025-01-07", periods=24 * days, freq="h", tz="UTC"):
+        crud_manager.save_to_db("market", t, None, 0.05 if t.hour < 6 else 0.40)
+
+
+def test_optimize_without_market_data_returns_400(client, crud_manager, household_id):
+    client.post("/api/vehicles", json={**EV_PAYLOAD_TEMPLATE, "household_id": household_id})
+    response = client.post("/api/optimize")
+    assert response.status_code == 400
+    assert "No market data" in response.json()["detail"]
+
+
+def test_optimize_uses_history_and_updates_ev_soc(client, db_manager, crud_manager, household_id):
+    vehicle_id = client.post("/api/vehicles", json={**EV_PAYLOAD_TEMPLATE, "household_id": household_id}).json()["vehicle_id"]
+    _seed_past_market_prices(crud_manager)
+
+    response = client.post("/api/optimize")
+    assert response.status_code == 200
+    plan = response.json()
+    assert len(plan) == 24
+    assert {row["battery_id"] for row in plan} == {vehicle_id}
+    assert all(row["status"] == "Optimal" for row in plan)
+    assert all(row["load"] > 0 for row in plan)  # household load generated from now onwards
+    assert sorted({row["price"] for row in plan}) == [0.05, 0.40]  # hour-of-day profile of past prices
+
+    rows = db_query(db_manager, "SELECT soc_kwh FROM electric_vehicles WHERE vehicle_id = %s", (vehicle_id,))
+    assert rows[0][0] == pytest.approx(plan[-1]["soc"])
+
