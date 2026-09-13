@@ -18,6 +18,7 @@ import argparse
 import csv
 import json
 import sys
+from contextlib import closing
 from pathlib import Path
 
 import pandas as pd
@@ -57,9 +58,8 @@ def _bulk_insert(
     """Bulk-insert *rows* into *table* using execute_values."""
     col_str = ", ".join(columns)
     sql = f"INSERT INTO {table} ({col_str}) VALUES %s"
-    conn = db.connect()
-    with conn:
-        execute_values(conn, sql, rows, page_size=1000)
+    with closing(db.connect()) as conn, conn, conn.cursor() as cursor:
+        execute_values(cursor, sql, rows, page_size=1000)
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ def load_pack(pack_name: str):
     if not readings_path.exists():
         print("  (no readings.csv found, skipping)")
     else:
-        _load_readings(db, readings_path)
+        _load_readings(db, readings_path, community_id)
 
     print(f"\n  ✓ Pack '{pack_name}' loaded successfully.")
     print(f"    {len(entities['households'])} households")
@@ -193,7 +193,7 @@ def load_pack(pack_name: str):
     print(f"    {len(entities['vehicles'])} electric vehicles")
 
 
-def _load_readings(db: DatabaseManager, path: Path):
+def _load_readings(db: DatabaseManager, path: Path, community_id: str):
     """Bulk-insert readings.csv into the appropriate hypertables."""
     has_community_solar = _has_column(db, "solar", "community_id")
     has_community_load = _has_column(db, "household_load", "community_id")
@@ -205,6 +205,10 @@ def _load_readings(db: DatabaseManager, path: Path):
     load_cols = ["time", "household_id", "value"]
     if has_community_load:
         load_cols.append("community_id")
+
+    # Values for the optional community_id column, appended to every row.
+    solar_extra = (community_id,) if has_community_solar else ()
+    load_extra = (community_id,) if has_community_load else ()
 
     chunk_size = 5000
     solar_rows: list[tuple] = []
@@ -220,11 +224,11 @@ def _load_readings(db: DatabaseManager, path: Path):
             meter_type = row["meter_type"]
 
             if meter_type == "solar":
-                row_tuple = (ts, row["source_id"], value)
+                row_tuple = (ts, row["source_id"], value, *solar_extra)
                 solar_rows.append(row_tuple)
                 n_solar += 1
             else:
-                row_tuple = (ts, row["household_id"], value)
+                row_tuple = (ts, row["household_id"], value, *load_extra)
                 load_rows.append(row_tuple)
                 n_load += 1
 

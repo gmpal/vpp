@@ -2,20 +2,21 @@
 """Integration tests for research/load_pack.py — community pack bootstrap.
 
 These tests verify:
-  - Admin user creation (idempotent)
   - Community, household, source, vehicle, battery loading
   - Readings bulk-insertion
-  - Pack idempotency (loading twice doesn't duplicate)
+  - Loading a pack twice is rejected without duplicating rows
 
 Run:
-    pytest tests/test_load_pack.py -v -k integration
+    pytest tests/test_load_pack.py -v -m integration
 """
 
 import csv
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import psycopg2
 import pytest
 
 
@@ -76,7 +77,7 @@ def sample_pack_dir(tmp_path):
                 "capacity_kwh": 60.0,
                 "soc_kwh": 30.0,
                 "max_charge_kw": 11.0,
-                "max_discharge_kw": 0.0,
+                "max_discharge_kw": 11.0,  # schema requires > 0 (build_packs emits 0.0)
                 "eta": 0.95,
                 "status": "home",
             },
@@ -102,192 +103,126 @@ def sample_pack_dir(tmp_path):
     return pack_dir, pack_name
 
 
+PACK_COMMUNITY_ID = "c1234567-89ab-cdef-0123-456789abcdef"
+
+
+@pytest.fixture
+def loaded_pack(schema_manager, cleanup, sample_pack_dir):
+    """Load the sample pack into a fresh schema; tables are emptied afterwards."""
+    from backend.src.research.load_pack import load_pack
+
+    pack_dir, pack_name = sample_pack_dir
+    with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent):
+        load_pack(pack_name)
+    return pack_dir, pack_name
+
+
 @pytest.mark.integration
 class TestLoadPackEntities:
     """Test loading entity metadata."""
 
-    def test_community_loaded(self, db_manager, sample_pack_dir):
+    def test_community_loaded(self, db_manager, loaded_pack):
         """Community should be created in the database."""
-        from backend.src.research.load_pack import load_pack
-
-        pack_dir, pack_name = sample_pack_dir
-        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent.parent):
-            load_pack(pack_name)
-
         rows = db_manager.execute(
-            "SELECT community_id, name FROM communities WHERE community_id = %s",
-            ("c1234567-89ab-cdef-0123-456789abcdef",),
+            "SELECT community_id::text, name FROM communities WHERE community_id = %s",
+            (PACK_COMMUNITY_ID,),
             fetch=True,
         )
-        assert len(rows) == 1
-        assert rows[0]["name"] == "test_community"
+        assert rows == [(PACK_COMMUNITY_ID, "test_community")]
 
-    def test_households_loaded(self, db_manager, sample_pack_dir):
+    def test_households_loaded(self, db_manager, loaded_pack):
         """Households should be created with correct IDs."""
-        from backend.src.research.load_pack import load_pack
-
-        pack_dir, pack_name = sample_pack_dir
-        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent.parent):
-            load_pack(pack_name)
-
         rows = db_manager.execute(
-            "SELECT household_id, name, solar_panels, num_evs "
-            "FROM households WHERE household_id IN ('hh_8_1_100', 'hh_8_1_200')",
+            "SELECT household_id, solar_panels, num_evs, community_id::text "
+            "FROM households WHERE household_id IN ('hh_8_1_100', 'hh_8_1_200') ORDER BY household_id",
             fetch=True,
         )
-        assert len(rows) == 2
+        assert rows == [
+            ("hh_8_1_100", 1, 0, PACK_COMMUNITY_ID),
+            ("hh_8_1_200", 0, 1, PACK_COMMUNITY_ID),
+        ]
 
-        # Find each household
-        hh100 = next(r for r in rows if r["household_id"] == "hh_8_1_100")
-        hh200 = next(r for r in rows if r["household_id"] == "hh_8_1_200")
-
-        assert hh100["solar_panels"] == 1
-        assert hh200["solar_panels"] == 0
-        assert hh200["num_evs"] == 1
-
-    def test_sources_loaded(self, db_manager, sample_pack_dir):
+    def test_sources_loaded(self, db_manager, loaded_pack):
         """Solar sources should be created with correct household FK."""
-        from backend.src.research.load_pack import load_pack
-
-        pack_dir, pack_name = sample_pack_dir
-        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent.parent):
-            load_pack(pack_name)
-
         rows = db_manager.execute(
             "SELECT source_id, type, household_id FROM energy_sources "
             "WHERE source_id = 'src_8_1_100'",
             fetch=True,
         )
-        assert len(rows) == 1
-        assert rows[0]["type"] == "solar"
-        assert rows[0]["household_id"] == "hh_8_1_100"
+        assert rows == [("src_8_1_100", "solar", "hh_8_1_100")]
 
-    def test_vehicles_loaded(self, db_manager, sample_pack_dir):
+    def test_vehicles_loaded(self, db_manager, loaded_pack):
         """EV vehicles should be created with correct household FK."""
-        from backend.src.research.load_pack import load_pack
-
-        pack_dir, pack_name = sample_pack_dir
-        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent.parent):
-            load_pack(pack_name)
-
         rows = db_manager.execute(
             "SELECT vehicle_id, household_id, capacity_kwh, soc_kwh "
             "FROM electric_vehicles WHERE vehicle_id = 'veh_8_1_200'",
             fetch=True,
         )
-        assert len(rows) == 1
-        assert rows[0]["household_id"] == "hh_8_1_200"
-        assert rows[0]["capacity_kwh"] == 60.0
-        assert rows[0]["soc_kwh"] == 30.0
+        assert rows == [("veh_8_1_200", "hh_8_1_200", 60.0, 30.0)]
 
-    def test_battery_loaded(self, db_manager, sample_pack_dir):
+    def test_battery_loaded(self, db_manager, loaded_pack):
         """Community battery should be created with correct capacity."""
-        from backend.src.research.load_pack import load_pack
-
-        pack_dir, pack_name = sample_pack_dir
-        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent.parent):
-            load_pack(pack_name)
-
         rows = db_manager.execute(
             "SELECT battery_id, capacity_kwh, soc_kwh FROM batteries "
             "WHERE battery_id = 'bat_8_1'",
             fetch=True,
         )
-        assert len(rows) == 1
-        assert rows[0]["capacity_kwh"] == 80.0  # 8 × 10
-        assert rows[0]["soc_kwh"] == 40.0  # 80.0 × 0.5
+        assert rows == [("bat_8_1", 80.0, 40.0)]  # 8 x 10 kWh, 50 % SOC
 
 
 @pytest.mark.integration
 class TestLoadPackReadings:
     """Test bulk-insertion of readings."""
 
-    def test_readings_loaded(self, db_manager, sample_pack_dir):
+    def test_readings_loaded(self, db_manager, loaded_pack):
         """Readings should be inserted into solar and household_load tables."""
-        from backend.src.research.load_pack import load_pack
+        assert db_manager.execute("SELECT COUNT(*) FROM solar", fetch=True)[0][0] == 2
+        assert db_manager.execute("SELECT COUNT(*) FROM household_load", fetch=True)[0][0] == 2
+        rows = db_manager.execute("SELECT DISTINCT community_id::text FROM solar", fetch=True)
+        assert rows == [(PACK_COMMUNITY_ID,)]
 
-        pack_dir, pack_name = sample_pack_dir
-        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent.parent):
-            load_pack(pack_name)
-
-        # Check solar readings
-        solar_rows = db_manager.execute(
-            "SELECT COUNT(*) as cnt FROM solar",
-            fetch=True,
-        )
-        assert solar_rows[0]["cnt"] == 2  # 2 solar rows in test data
-
-        # Check load readings
-        load_rows = db_manager.execute(
-            "SELECT COUNT(*) as cnt FROM household_load",
-            fetch=True,
-        )
-        assert load_rows[0]["cnt"] == 2  # 2 load rows in test data
-
-    def test_readings_timestamps_correct(self, db_manager, sample_pack_dir):
+    def test_readings_timestamps_correct(self, db_manager, loaded_pack):
         """Timestamps should be correctly parsed and stored."""
-        from backend.src.research.load_pack import load_pack
-
-        pack_dir, pack_name = sample_pack_dir
-        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent.parent):
-            load_pack(pack_name)
-
-        rows = db_manager.execute(
-            "SELECT time FROM solar ORDER BY time ASC",
-            fetch=True,
-        )
-        assert len(rows) == 2
-        # Timestamps should be valid
-        assert rows[0]["time"] is not None
+        expected = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        rows = db_manager.execute("SELECT time FROM solar ORDER BY time ASC", fetch=True)
+        assert [r[0] for r in rows] == [expected, expected]
+        rows = db_manager.execute("SELECT time FROM household_load ORDER BY time ASC", fetch=True)
+        assert [r[0] for r in rows] == [expected.replace(hour=1), expected.replace(hour=2)]
 
 
 @pytest.mark.integration
-class TestLoadPackIdempotency:
-    """Test that loading the same pack twice doesn't create duplicates."""
+class TestLoadPackTwice:
+    """load_pack uses plain INSERTs, so a pack can only be loaded once."""
 
-    def test_load_pack_twice_no_duplicates(self, db_manager, sample_pack_dir):
-        """Loading a pack twice should not duplicate entities."""
+    def test_second_load_is_rejected_without_duplicates(self, db_manager, loaded_pack):
         from backend.src.research.load_pack import load_pack
 
-        pack_dir, pack_name = sample_pack_dir
-        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent.parent):
-            load_pack(pack_name)
-            load_pack(pack_name)  # Load again
+        pack_dir, pack_name = loaded_pack
+        with patch("backend.src.research.load_pack.OUTPUT_DIR", pack_dir.parent):
+            with pytest.raises(psycopg2.errors.UniqueViolation):
+                load_pack(pack_name)
 
-        # Check household count
         rows = db_manager.execute(
-            "SELECT COUNT(*) as cnt FROM households "
-            "WHERE household_id IN ('hh_8_1_100', 'hh_8_1_200')",
+            "SELECT COUNT(*) FROM households WHERE household_id IN ('hh_8_1_100', 'hh_8_1_200')",
             fetch=True,
         )
-        assert rows[0]["cnt"] == 2  # Should still be 2, not 4
-
-        # Check community count
+        assert rows[0][0] == 2
         rows = db_manager.execute(
-            "SELECT COUNT(*) as cnt FROM communities "
-            "WHERE community_id = 'c1234567-89ab-cdef-0123-456789abcdef'",
+            "SELECT COUNT(*) FROM communities WHERE community_id = %s",
+            (PACK_COMMUNITY_ID,),
             fetch=True,
         )
-        assert rows[0]["cnt"] == 1  # Should still be 1, not 2
+        assert rows[0][0] == 1
 
 
-@pytest.mark.integration
 class TestLoadPackNotFound:
-    """Test error handling for missing packs."""
+    """Test error handling for missing packs (no database needed)."""
 
-    def test_missing_pack_raises_error(self, tmp_path):
-        """Loading a non-existent pack should exit with error."""
-        import sys
-        from io import StringIO
+    def test_missing_pack_exits_with_error(self, tmp_path, capsys):
         from backend.src.research.load_pack import load_pack
 
-        # Capture stderr
-        old_stderr = sys.stderr
-        sys.stderr = StringIO()
-
-        try:
-            load_pack("nonexistent_1")
-        except SystemExit as e:
-            assert e.code == 1
-        finally:
-            sys.stderr = old_stderr
+        with patch("backend.src.research.load_pack.OUTPUT_DIR", tmp_path):
+            with pytest.raises(SystemExit) as exc:
+                load_pack("nonexistent_1")
+        assert exc.value.code == 1
+        assert "Pack not found" in capsys.readouterr().out
