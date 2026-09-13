@@ -3,7 +3,35 @@
 ## High Priority — Features
 
 - [ ] **`energy_sources` type constraint** — Schema locks `type` to `'solar'` only (`CHECK (type IN ('solar'))`). Extend to support `'wind'` and any future source types, or make it a FK to a source_types table.
-- [ ] **Optimization endpoint** — `optimize()` uses forecast data only; does not account for real-time EV SOC drift or partial charge sessions between runs.
+- [ ] **Optimization endpoint** — Falls back to history when forecasts are missing (done 2026-09-13), but does not account for real-time EV SOC drift or partial charge sessions between runs.
+
+## Backend — Known Issues (audit 2026-09-13)
+
+Found while testing with the API console (`make console`). Completed items are recorded in `CHANGELOG.md`.
+
+### Bugs
+- [ ] **Realtime endpoint returns the oldest data** — `GET /api/realtime-data/{source}` calls `load_historical_data(top=100)`, which orders by time ascending and limits, so without `since` it returns the first 100 points ever stored. `/api/historical?top=N` behaves the same.
+- [ ] **Generated load is wiped by household changes** — `POST /api/data/generate-system-data` writes synthetic rows to `load`, but creating/deleting a household rebuilds `load` from `household_load` (DELETE first). Reset-db already treats load as household-derived; the endpoint should stop writing load.
+- [ ] **Forecasting status reports success on failure** — `run_training` / `run_inference` ignore the subprocess return code and set `last_training` / `last_inference` anyway. Script paths (`/app/backend/...`) and the MLflow URI (`http://mlflow:5000`) are hardcoded, so they only work inside Docker.
+- [ ] **Community summary ignores batteries** — `CrudManager.get_community_summary` never fills `battery_count`, `battery_soc_total`, `battery_soc_capacity`; they are always 0.
+
+### Performance
+- [ ] **Row-by-row inserts, one connection each** — `save_to_db` opens and commits a connection per row: reset/init-db ≈ 37 s for 2,400 market rows, generate-system-data ≈ 2.5 min. Batch with `execute_values`.
+- [ ] **N+1 queries in `GET /api/sources`** — one extra query per source for its latest value.
+- [ ] **Sync DB calls on the event loop** — `POST /api/sources` and `DELETE /api/sources/{id}` are `async def` (to schedule simulators) but call blocking psycopg2; short queries, but they block other requests meanwhile.
+
+### Optimization model
+- [ ] **No battery-wear cost** — with a very cheap refill ahead, V2G EVs sell charge early to make room (rational on price alone). Add a per-kWh throughput cost.
+- [ ] **Discharge efficiency mismatch** — the optimizer applies `eta` only when charging; `/api/vehicles/{id}/discharge` also divides discharge by `eta`.
+- [ ] **No departure targets** — no minimum final SOC or departure time per EV (option C from the 2026-09-13 design discussion).
+
+### Correctness & cleanup
+- [ ] **Unknown series names return 500** — `InvalidTableNameError` (e.g. `/api/forecasted/foo`) should map to 400/404.
+- [ ] **Startup hooks fail silently** — both use `except Exception: pass`, so migrations and simulator restarts are skipped without a log line; they also use deprecated `@app.on_event` (move to lifespan).
+- [ ] **Wind leftovers** — wind is unsupported but still referenced in `SchemaManager.FORECAST_TABLES`, the `community_id` migration and the `AddSourceRequest` comment.
+- [ ] **`load_pack` is not re-runnable** — plain INSERTs; loading a pack twice fails on the first duplicate key.
+- [ ] **Ruff** — 8 pre-existing findings (unused imports, import order, complexity in `build_packs` / `load_pack`).
+- [ ] **Local dev ports** — on the maintainer's machine `.env` conflicts: port 8000 is used by another app and 5432 by a native Windows Postgres. Workaround: backend on 8001 against the test DB on 55432.
 
 ## High Priority — Tooling & Libraries
 

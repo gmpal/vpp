@@ -16,6 +16,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Mermaid architecture diagram in README
 - `CONTRIBUTING.md` with branch conventions and coding standards
 - Inline documentation in `.env.example`
+- API console (`tools/api-console/index.html`, `make console`) — static page with buttons and plots for manually exercising every backend route; backend URL via `?api=`
+- Optimization sell price: energy sold earns the market price × `OPTIMIZATION_SELL_PRICE_FACTOR` (default 0.3), overridable per request with `POST /api/optimize?sell_price_factor=`
+- Optimization values energy left in EVs at the window's average buy price, so cheap surplus is stored rather than sold
+
+### Changed
+- `POST /api/optimize` plans a 24 h hourly UTC window from the current hour. Inputs use forecasts first, then history at the same hours, then an hour-of-day profile from the 7 days of history closest to the window — no trained models needed. Missing load or market data returns 400 instead of 500
+- Optimization result rows add `solar`, `load`, `price`, `sell_price`, `stored_energy_price`, `stored_energy_value` and `objective`; `total_cost` is the net grid cost
+- `electric_vehicles.max_discharge_kw` may be 0 (charge-only EVs); idempotent migration runs on init-db and API startup
+- Stale integration tests replaced: `tests/test_api_integration.py` removed (old battery payload, removed routes); still-valid coverage moved to `tests/test_api_db.py`, plus battery lifecycle and optimizer tests
+
+### Fixed
+- `DELETE /api/sources/{id}` always returned 500, and `POST /api/sources` with a `community_id` returned 500 ("no running event loop" when scheduling the simulator)
+- `GET /api/device-status` always returned 500 (looked up a non-existent `wind` table)
+- `POST /api/optimize` always returned 500 (treated CRUD lists as DataFrames)
+- Optimizer counted EV charging as power sold to the grid, and gave the first hour's charge/discharge for free
+- `load_pack` could not load any pack: `execute_values` got a connection instead of a cursor, readings omitted `community_id` values, and the schema rejected the builder's charge-only EVs
+- Household load was generated from local time but stored as UTC (started 2 h in the future off Docker)
 
 ### Removed
 - Authentication and per-user data scoping (JWT login, `users` table, `user_id` / `manager_user_id` ownership checks). Last present in commit `951c9b8` (also local branch `feature/auth`); restore by reverting this commit.
