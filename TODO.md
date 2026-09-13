@@ -11,7 +11,7 @@ Found while testing with the API console (`make console`). Completed items are r
 
 ### Plan (agreed 2026-09-13)
 1. **Done** (`34b25b5`) — data layer batch: batched inserts, latest-data semantics for `top`, stop generated load being wiped.
-2. **In progress** — forecasting status + silent startup hooks; community summary battery fields.
+2. **Done** (`640585a`, `b3c2e80`, `70badca`) — forecasting status + silent startup hooks; community summary battery fields.
 3. **On hold** — optimization model items (wear cost, discharge efficiency) until the uncommitted `dispatch()` / settlement work in `optimization.py` lands, to avoid conflicts.
 4. **Filler** — wind leftovers, 4xx mapping for unknown series, ruff findings.
 5. **Decision pending (maintainer)** — push `develop` / open a PR so CI runs the new tests against the disposable test DB.
@@ -19,8 +19,9 @@ Found while testing with the API console (`make console`). Completed items are r
 ### Bugs
 - [x] **Realtime endpoint returns the oldest data** — fixed 2026-09-13 (`34b25b5`): `top` without a lower bound keeps the latest points; `since` is exclusive.
 - [x] **Generated load is wiped by household changes** — fixed 2026-09-13 (`34b25b5`): the endpoint replaces market prices and rebuilds load from households instead of writing synthetic load.
-- [ ] **Forecasting status reports success on failure** — `run_training` / `run_inference` ignore the subprocess return code and set `last_training` / `last_inference` anyway. Script paths (`/app/backend/...`) and the MLflow URI (`http://mlflow:5000`) are hardcoded, so they only work inside Docker.
-- [ ] **Community summary ignores batteries** — `CrudManager.get_community_summary` never fills `battery_count`, `battery_soc_total`, `battery_soc_capacity`; they are always 0.
+- [x] **Forecasting status reports success on failure** — fixed 2026-09-13 (`640585a`): status adds `last_*_ok` / `last_*_error`; pipelines run via `sys.executable -m` from the repo root; MLflow URI from settings; no parallel runs.
+- [ ] **Inference "succeeds" without forecasting anything** — `inference_pipeline` logs and skips datasets whose model is missing or whose prediction fails, then exits 0, so `last_inference_ok` can be true with no forecasts written. Consider failing (or reporting a count) when no dataset was forecast.
+- [x] **Community summary ignores batteries** — fixed 2026-09-13 (`70badca`).
 
 ### Performance
 - [x] **Row-by-row inserts, one connection each** — fixed 2026-09-13 (`34b25b5`): `CrudManager.save_series` batches with `execute_values`; 2,400 market rows 62.9 s → 0.16 s (measured). `save_to_db` remains for single streamed readings from the Kafka consumer.
@@ -34,10 +35,10 @@ Found while testing with the API console (`make console`). Completed items are r
 
 ### Correctness & cleanup
 - [ ] **Unknown series names return 500** — `InvalidTableNameError` (e.g. `/api/forecasted/foo`) should map to 400/404.
-- [ ] **Startup hooks fail silently** — both use `except Exception: pass`, so migrations and simulator restarts are skipped without a log line; they also use deprecated `@app.on_event` (move to lifespan).
+- [x] **Startup hooks fail silently** — fixed 2026-09-13 (`b3c2e80`): failures are logged as warnings; hooks run from a lifespan handler.
 - [ ] **Wind leftovers** — wind is unsupported but still referenced in `SchemaManager.FORECAST_TABLES`, the `community_id` migration and the `AddSourceRequest` comment.
 - [ ] **`load_pack` is not re-runnable** — plain INSERTs; loading a pack twice fails on the first duplicate key.
-- [ ] **Ruff** — 8 pre-existing findings (unused imports, import order, complexity in `build_packs` / `load_pack`).
+- [ ] **Ruff** — 6 pre-existing findings as of `b3c2e80` (import order, unused `pandas` import and complexity in `load_pack`); the uncommitted `build_packs` rewrite removes another.
 - [ ] **Local dev ports** — on the maintainer's machine `.env` conflicts: port 8000 is used by another app and 5432 by a native Windows Postgres. Workaround: backend on 8001 against the test DB on 55432.
 
 ## High Priority — Tooling & Libraries

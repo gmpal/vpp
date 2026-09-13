@@ -27,6 +27,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `/api/realtime-data?since=` returns only points strictly after `since` (was inclusive, re-sending the last point on every poll)
 - `POST /api/data/generate-system-data` regenerates market prices (replacing existing rows) and rebuilds load from households; it no longer writes synthetic load. Response adds `market_points` and `load_points`
 - Time-series writes are batched (`CrudManager.save_series`, forecasts, household load): seeding 2,400 market rows takes 0.16 s instead of ~63 s
+- `GET /api/forecasting/status` adds `last_training_ok`, `last_training_error`, `last_inference_ok`, `last_inference_error`; `last_training` / `last_inference` are UTC finish times
+- Training and inference run as `python -m backend.src.pipelines.<name>` with the current interpreter from the repo root (work outside Docker) and read `MLFLOW_TRACKING_URI` from settings
+- API startup hooks run from a FastAPI lifespan handler instead of the deprecated `@app.on_event`
 - `electric_vehicles.max_discharge_kw` may be 0 (charge-only EVs); idempotent migration runs on init-db and API startup
 - Stale integration tests replaced: `tests/test_api_integration.py` removed (old battery payload, removed routes); still-valid coverage moved to `tests/test_api_db.py`, plus battery lifecycle and optimizer tests
 
@@ -40,6 +43,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `GET /api/realtime-data` without `since` returned the first 100 points ever stored instead of the latest
 - Synthetic load from generate-system-data was wiped by the next household create/delete, and repeated calls duplicated market rows
 - `save_household_load` never closed its database connection
+- Forecasting status reported training/inference as done even when the pipeline failed, and two quick requests could start parallel runs
+- Startup schema migrations and simulator restarts were skipped silently when the database was down at boot; they now log a warning
+- `GET /api/community/summary` always returned 0 for `battery_count`, `battery_soc_total` and `battery_soc_capacity`
 
 ### Removed
 - Authentication and per-user data scoping (JWT login, `users` table, `user_id` / `manager_user_id` ownership checks). Last present in commit `951c9b8` (also local branch `feature/auth`); restore by reverting this commit.
