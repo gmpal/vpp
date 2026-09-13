@@ -8,7 +8,7 @@ Requires the disposable test database: `make test-int`.
 import pytest
 import pandas as pd
 from fastapi.testclient import TestClient
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from backend.api.main import app
 
@@ -72,6 +72,13 @@ def mock_create_source():
         yield m
 
 
+@pytest.fixture
+def mock_simulator():
+    """Replace the device simulator so no Kafka producer is started."""
+    with patch("backend.api.routes.sources.SimulatorManager.start_simulator", new_callable=AsyncMock) as start,          patch("backend.api.routes.sources.SimulatorManager.stop_simulator", new_callable=AsyncMock) as stop:
+        yield start, stop
+
+
 def test_post_source_inserts_db_row(client, db_manager, schema_manager, cleanup, mock_create_source):
     """POST /api/sources must insert a row into energy_sources."""
     payload = {"source_type": "solar", "latitude": 48.2, "longitude": 16.37, "name": "Test Solar"}
@@ -108,6 +115,34 @@ def test_post_source_with_household_id(client, db_manager, schema_manager, clean
     assert rows[0][0] == hh_id
 
 
+def test_post_source_with_community_starts_simulator(
+    client, db_manager, crud_manager, schema_manager, cleanup, mock_create_source, mock_simulator
+):
+    """POST /api/sources with community_id must persist the row and schedule the simulator."""
+    community_id = "c1234567-89ab-cdef-0123-456789abcdef"
+    crud_manager.create_community(community_id, "Test Community", 48.2, 16.37)
+
+    payload = {"source_type": "solar", "latitude": 48.2, "longitude": 16.37, "community_id": community_id}
+    response = client.post("/api/sources", json=payload)
+    assert response.status_code == 200
+    assert response.json()["source_id"] == "test_src_01"
+
+    rows = db_query(db_manager, "SELECT community_id FROM energy_sources WHERE source_id = 'test_src_01'")
+    assert str(rows[0][0]) == community_id
+
+    start, _ = mock_simulator
+    start.assert_called_once_with(
+        source_id="test_src_01", source_type="solar", community_id=community_id, latitude=48.2, longitude=16.37,
+    )
+
+
+def test_post_source_with_unknown_community_returns_404(client, schema_manager, cleanup, mock_create_source):
+    payload = {"source_type": "solar", "latitude": 1.0, "longitude": 2.0,
+               "community_id": "00000000-0000-0000-0000-000000000000"}
+    response = client.post("/api/sources", json=payload)
+    assert response.status_code == 404
+
+
 def test_get_sources_returns_inserted_rows(client, db_manager, schema_manager, cleanup, mock_create_source):
     client.post("/api/sources", json={"source_type": "solar", "latitude": 1.0, "longitude": 2.0})
     response = client.get("/api/sources")
@@ -118,22 +153,28 @@ def test_get_sources_returns_inserted_rows(client, db_manager, schema_manager, c
     assert data[0]["source_type"] == "solar"
 
 
-def test_delete_source_removes_db_rows(client, db_manager, schema_manager, cleanup, mock_create_source):
+def test_delete_source_removes_db_rows(client, db_manager, schema_manager, cleanup, mock_create_source, mock_simulator):
     client.post("/api/sources", json={"source_type": "solar", "latitude": 1.0, "longitude": 2.0})
     response = client.delete("/api/sources/test_src_01")
     assert response.status_code == 200
+    assert response.json() == {"detail": "Source deleted successfully"}
     rows = db_query(db_manager, "SELECT source_id FROM energy_sources WHERE source_id = 'test_src_01'")
     assert len(rows) == 0
+    _, stop = mock_simulator
+    stop.assert_called_once_with("test_src_01")
 
 
-def test_delete_source_also_removes_time_series_data(client, db_manager, crud_manager, schema_manager, cleanup, mock_create_source):
+def test_delete_source_also_removes_time_series_data(
+    client, db_manager, crud_manager, schema_manager, cleanup, mock_create_source, mock_simulator
+):
     client.post("/api/sources", json={"source_type": "solar", "latitude": 1.0, "longitude": 2.0})
     crud_manager.save_to_db("solar", pd.Timestamp("2024-01-01", tz="UTC"), "test_src_01", 100.0)
     crud_manager.save_forecast(
         "solar", "test_src_01",
         pd.DataFrame({"value": [50.0]}, index=pd.to_datetime(["2024-01-02"], utc=True)),
     )
-    client.delete("/api/sources/test_src_01")
+    response = client.delete("/api/sources/test_src_01")
+    assert response.status_code == 200
     assert len(db_query(db_manager, "SELECT * FROM solar WHERE source_id = 'test_src_01'")) == 0
     assert len(db_query(db_manager, "SELECT * FROM solar_forecast WHERE source_id = 'test_src_01'")) == 0
 

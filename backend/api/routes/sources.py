@@ -13,9 +13,19 @@ from backend.src.utils.logger import get_logger
 router = APIRouter()
 logger = get_logger(__name__)
 
+# The event loop only keeps weak references to tasks, so hold them until done.
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _schedule(coro) -> None:
+    """Run a coroutine in the background on the current event loop."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
 
 @router.post("/sources", response_model=EnergySourceWithData)
-def add_source_with_location(
+async def add_source_with_location(
     request: AddSourceRequest,
     db: DatabaseManager = Depends(get_db_manager),
     crud: CrudManager = Depends(get_crud_manager),
@@ -45,7 +55,7 @@ def add_source_with_location(
 
         # Start device simulator when community_id is present
         if request.community_id:
-            asyncio.create_task(
+            _schedule(
                 SimulatorManager.start_simulator(
                     source_id=source_id,
                     source_type=request.source_type,
@@ -114,7 +124,7 @@ def get_all_sources(
 
 
 @router.delete("/sources/{source_id}")
-def delete_source(
+async def delete_source(
     source_id: str,
     db: DatabaseManager = Depends(get_db_manager),
 ):
@@ -131,7 +141,7 @@ def delete_source(
         db.execute(f"DELETE FROM {source_type}_forecast WHERE source_id = %s", (source_id,))
         db.execute("DELETE FROM energy_sources WHERE source_id = %s", (source_id,))
         # Stop simulator if running
-        asyncio.create_task(SimulatorManager.stop_simulator(source_id))
+        _schedule(SimulatorManager.stop_simulator(source_id))
         return {"detail": "Source deleted successfully"}
     except HTTPException:
         raise
