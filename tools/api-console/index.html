@@ -173,7 +173,7 @@
     <div class="row">
       <label>Sell price factor <input id="opt-sell" type="number" step="0.05" min="0" placeholder="default"></label>
       <button onclick="runOptimize()">Optimize home EVs</button>
-      <span class="hint">Needs at least one EV with status "home" and solar/load/market <em>forecasts</em> (train + run inference first).</span>
+      <span class="hint">Needs an EV with status "home", load (create a household) and market prices (Init DB). Uses forecasts when present, otherwise history. Blank sell factor = server default (0.3).</span>
     </div>
     <div id="opt-summary" class="kv"></div>
     <div class="chart"><canvas id="chart-soc"></canvas></div>
