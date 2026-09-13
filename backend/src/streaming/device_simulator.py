@@ -55,8 +55,8 @@ class DeviceSimulator:
     def _init_providers(self) -> None:
         """Initialise provider objects (import deferred to keep startup fast)."""
         if self._weather is None and self._use_real_data:
-            from backend.src.streaming.providers.weather import WeatherProvider
             from backend.src.streaming.providers.market_prices import MarketPriceProvider
+            from backend.src.streaming.providers.weather import WeatherProvider
             self._weather = WeatherProvider(self.latitude, self.longitude)
             self._market = MarketPriceProvider()
 

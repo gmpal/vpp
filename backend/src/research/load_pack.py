@@ -21,10 +21,9 @@ import sys
 from contextlib import closing
 from pathlib import Path
 
-import pandas as pd
+from psycopg2.extras import execute_values
 
 from backend.src.db import DatabaseManager
-from psycopg2.extras import execute_values
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -66,6 +65,60 @@ def _bulk_insert(
 # Entity loading
 # ---------------------------------------------------------------------------
 
+# Placeholder coordinates (Brussels): Fluvius data has no geolocation.
+_PLACEHOLDER_LAT, _PLACEHOLDER_LON = 50.85, 4.35
+
+
+def _insert_with_community(db: DatabaseManager, table: str, columns: list[str], rows: list[tuple], community_ids: list):
+    """Bulk-insert rows, adding each row's community_id when the table has that column."""
+    if not rows:
+        return
+    if _has_column(db, table, "community_id"):
+        columns = [*columns, "community_id"]
+        rows = [row + (community_id,) for row, community_id in zip(rows, community_ids)]
+    _bulk_insert(db, table, columns, rows)
+
+
+def _insert_households(db: DatabaseManager, households: list[dict]):
+    columns = ["household_id", "name", "latitude", "longitude", "solar_panels", "building_type", "num_people", "num_evs"]
+    rows = [
+        (hh["household_id"], f"Household {hh['ean_id']}", _PLACEHOLDER_LAT, _PLACEHOLDER_LON,
+         hh["solar_panels"], hh["building_type"], hh["num_people"], hh["num_evs"])
+        for hh in households
+    ]
+    _insert_with_community(db, "households", columns, rows, [hh["community_id"] for hh in households])
+
+
+def _insert_sources(db: DatabaseManager, sources: list[dict]):
+    columns = ["source_id", "type", "latitude", "longitude", "household_id"]
+    rows = [(src["source_id"], src["type"], _PLACEHOLDER_LAT, _PLACEHOLDER_LON, src["household_id"]) for src in sources]
+    _insert_with_community(db, "energy_sources", columns, rows, [src["community_id"] for src in sources])
+
+
+def _insert_vehicles(db: DatabaseManager, vehicles: list[dict]):
+    columns = ["vehicle_id", "household_id", "name", "capacity_kwh", "soc_kwh", "max_charge_kw", "max_discharge_kw", "eta", "status"]
+    rows = [tuple(v[c] for c in columns) for v in vehicles]
+    if rows:
+        _bulk_insert(db, "electric_vehicles", columns, rows)
+
+
+def _insert_community_battery(db: DatabaseManager, entities: dict):
+    """One shared battery per community, attached to the first household (FK required)."""
+    capacity = entities["battery_capacity_kwh"]
+    columns = ["battery_id", "household_id", "name", "capacity_kwh", "soc_kwh", "max_charge_kw", "max_discharge_kw", "eta"]
+    row = (
+        entities["battery_id"],
+        entities["households"][0]["household_id"],
+        f"Community battery ({entities['size']} HH)",
+        capacity,
+        capacity * entities["battery_soc_pct"],
+        capacity * 0.2,  # 20 % of capacity as max charge
+        capacity * 0.2,  # 20 % of capacity as max discharge
+        0.95,
+    )
+    _insert_with_community(db, "batteries", columns, [row], [entities["community_id"]])
+
+
 def load_pack(pack_name: str):
     """Load a single community pack into the database."""
     pack_dir = OUTPUT_DIR / pack_name
@@ -79,107 +132,23 @@ def load_pack(pack_name: str):
         entities = json.load(f)
 
     db = DatabaseManager()
-
-    # --- 1. Community ---
-    print("  [1/4] Creating community …")
     community_id = entities["community_id"]
-    db.execute(
-        "INSERT INTO communities (community_id, name) "
-        "VALUES (%s, %s)",
-        (community_id, entities["community_name"]),
-    )
 
-    # --- 2. Households ---
+    print("  [1/4] Creating community …")
+    db.execute("INSERT INTO communities (community_id, name) VALUES (%s, %s)", (community_id, entities["community_name"]))
+
     print("  [2/4] Inserting households …")
-    has_community = _has_column(db, "households", "community_id")
-    hh_cols = ["household_id", "name", "latitude", "longitude",
-               "solar_panels", "building_type", "num_people", "num_evs"]
-    if has_community:
-        hh_cols.append("community_id")
+    _insert_households(db, entities["households"])
 
-    hh_rows = []
-    for hh in entities["households"]:
-        row = (
-            hh["household_id"],
-            f"Household {hh['ean_id']}",
-            50.85,  # placeholder: Brussels (no geo in Fluvius)
-            4.35,
-            hh["solar_panels"],
-            hh["building_type"],
-            hh["num_people"],
-            hh["num_evs"],
-        )
-        if has_community:
-            row = row + (hh["community_id"],)
-        hh_rows.append(row)
-
-    _bulk_insert(db, "households", hh_cols, hh_rows)
-
-    # --- 3. Energy sources (solar) ---
     print("  [3/4] Inserting sources …")
-    has_community_src = _has_column(db, "energy_sources", "community_id")
-    src_cols = ["source_id", "type", "latitude", "longitude",
-                "household_id"]
-    if has_community_src:
-        src_cols.append("community_id")
+    _insert_sources(db, entities["sources"])
 
-    src_rows = []
-    for src in entities["sources"]:
-        row = (
-            src["source_id"],
-            src["type"],
-            50.85,
-            4.35,
-            src["household_id"],
-        )
-        if has_community_src:
-            row = row + (src["community_id"],)
-        src_rows.append(row)
-
-    if src_rows:
-        _bulk_insert(db, "energy_sources", src_cols, src_rows)
-
-    # --- 4. Electric vehicles ---
     print("  [4/4] Inserting vehicles …")
-    veh_cols = ["vehicle_id", "household_id", "name",
-                "capacity_kwh", "soc_kwh", "max_charge_kw",
-                "max_discharge_kw", "eta", "status"]
-    veh_rows = []
-    for v in entities["vehicles"]:
-        veh_rows.append((
-            v["vehicle_id"], v["household_id"], v["name"],
-            v["capacity_kwh"], v["soc_kwh"], v["max_charge_kw"],
-            v["max_discharge_kw"], v["eta"], v["status"],
-        ))
+    _insert_vehicles(db, entities["vehicles"])
 
-    if veh_rows:
-        _bulk_insert(db, "electric_vehicles", veh_cols, veh_rows)
-
-    # --- Battery (shared community) ---
     print("  Inserting community battery …")
-    has_community_bat = _has_column(db, "batteries", "community_id")
-    bat_cols = ["battery_id", "household_id", "name",
-                "capacity_kwh", "soc_kwh", "max_charge_kw",
-                "max_discharge_kw", "eta"]
-    if has_community_bat:
-        bat_cols.append("community_id")
+    _insert_community_battery(db, entities)
 
-    bat_rows = [(
-        entities["battery_id"],
-        entities["households"][0]["household_id"],  # FK to first HH (required)
-        f"Community battery ({entities['size']} HH)",
-        entities["battery_capacity_kwh"],
-        entities["battery_capacity_kwh"] * entities["battery_soc_pct"],
-        entities["battery_capacity_kwh"] * 0.2,   # 20 % of capacity as max charge
-        entities["battery_capacity_kwh"] * 0.2,   # 20 % of capacity as max discharge
-        0.95,
-    )]
-    if has_community_bat:
-        bat_rows[0] = bat_rows[0] + (community_id,)
-
-    _bulk_insert(db, "batteries", bat_cols, bat_rows)
-
-    # --- 5. Readings ---
     print("\n  Loading readings …")
     readings_path = pack_dir / "readings.csv"
     if not readings_path.exists():

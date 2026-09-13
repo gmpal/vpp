@@ -2,7 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.api.models import Community, CommunitySummary, CommunityCreate
+from backend.api.models import Community, CommunityCreate, CommunitySummary
 from backend.src.dependencies import get_crud_manager
 
 router = APIRouter()
