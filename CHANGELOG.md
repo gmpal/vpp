@@ -48,6 +48,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `GET /api/community/summary` always returned 0 for `battery_count`, `battery_soc_total` and `battery_soc_capacity`
 
 ### Removed
+- Wind as an energy source: simulator wind generation, consumer wind routing, wind speed in the weather provider, wind tables in schema lists, the `windpowerlib` dependency and wind in frontend API types. `POST /api/sources` now rejects `source_type: "wind"` with 422
 - Authentication and per-user data scoping (JWT login, `users` table, `user_id` / `manager_user_id` ownership checks). Last present in commit `951c9b8` (also local branch `feature/auth`); restore by reverting this commit.
 
 ---
