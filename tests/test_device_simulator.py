@@ -23,11 +23,6 @@ def solar_sim():
 
 
 @pytest.fixture
-def wind_sim():
-    return DeviceSimulator("src_wind", "wind", "comm_1", 51.0, 4.0, capacity_kw=10.0)
-
-
-@pytest.fixture
 def load_sim():
     return DeviceSimulator("src_load", "load", "comm_1", 51.0, 4.0, capacity_kw=5.0)
 
@@ -56,20 +51,6 @@ def test_solar_output_positive_at_noon(solar_sim):
     assert value > 0.0
 
 
-def test_wind_output_is_non_negative(wind_sim):
-    for i in range(50):
-        wind_sim.tick = i * 10
-        value, _ = run_async(wind_sim._wind())
-        assert value >= 0.0
-
-
-def test_wind_output_bounded_by_capacity(wind_sim):
-    for i in range(100):
-        wind_sim.tick = i
-        value, _ = run_async(wind_sim._wind())
-        assert value <= wind_sim.capacity_kw * 1.5  # noise can exceed briefly
-
-
 def test_load_baseline_is_positive(load_sim):
     load_sim.tick = 0  # midnight
     assert load_sim._load() > 0.0
@@ -83,13 +64,18 @@ def test_load_higher_in_evening(load_sim):
     assert evening_load > midnight_load
 
 
-def test_generate_reading_dispatches_correctly(solar_sim, wind_sim, load_sim):
+def test_generate_reading_dispatches_correctly(solar_sim, load_sim):
     solar_value, solar_extra = run_async(solar_sim._generate_reading())
-    wind_value, wind_extra = run_async(wind_sim._generate_reading())
     load_value, _ = run_async(load_sim._generate_reading())
     assert solar_value >= 0.0 and solar_extra["data_source"] == "synthetic"
-    assert wind_value >= 0.0 and wind_extra["data_source"] == "synthetic"
     assert load_value > 0.0
+
+
+def test_wind_is_no_longer_a_generating_source_type():
+    sim = DeviceSimulator("src_wind", "wind", "comm_1", 51.0, 4.0, capacity_kw=10.0)
+    assert not hasattr(sim, "_wind")
+    value, _ = run_async(sim._generate_reading())
+    assert value == 0.0
 
 
 def test_generate_reading_unknown_type_returns_zero():
@@ -187,7 +173,7 @@ def test_stop_all_clears_all():
     async def _run():
         with patch.object(DeviceSimulator, "run", new_callable=AsyncMock):
             await SimulatorManager.start_simulator("src_1", "solar", "comm_1", 51.0, 4.0)
-            await SimulatorManager.start_simulator("src_2", "wind", "comm_1", 51.0, 4.0)
+            await SimulatorManager.start_simulator("src_2", "solar", "comm_1", 51.0, 4.0)
             await SimulatorManager.stop_all()
             assert SimulatorManager.running_ids() == []
     run_async(_run())
@@ -216,7 +202,7 @@ def test_handle_device_reading_solar():
     assert call_args[1][3] == "comm_abc"
 
 
-def test_handle_device_reading_wind():
+def test_handle_device_reading_ignores_unsupported_types():
     from backend.src.streaming.communication import _handle_device_reading
 
     mock_db = MagicMock()
@@ -228,9 +214,7 @@ def test_handle_device_reading_wind():
         "timestamp": "2025-01-01T12:00:00+00:00",
     }
     _handle_device_reading(mock_db, msg)
-    mock_db.execute.assert_called_once()
-    call_args = mock_db.execute.call_args[0]
-    assert "wind" in call_args[0]
+    mock_db.execute.assert_not_called()
 
 
 def test_handle_device_reading_load():

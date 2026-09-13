@@ -60,7 +60,7 @@ def test_make_producers_info(mocker):
         "os.listdir",
         return_value=[
             "1_solar.csv",
-            "2_wind.csv",
+            "2_solar.csv",
             "synthetic_load_data.csv",
             "synthetic_market_price.csv",
         ],
@@ -78,14 +78,14 @@ def test_make_producers_info(mocker):
 
     assert len(producers_info) == 4
     assert producers_info[0] == ("solar.csv", "1", mock_df1)
-    assert producers_info[1] == ("wind.csv", "2", mock_df2)
+    assert producers_info[1] == ("solar.csv", "2", mock_df2)
     assert producers_info[2] == ("load", None, mock_df_load)
     assert producers_info[3] == ("market", None, mock_df_market)
     mock_listdir.assert_called_once_with("data_dir/")
     pd.read_csv.assert_has_calls(
         [
             call("data_dir/1_solar.csv", index_col=0),
-            call("data_dir/2_wind.csv", index_col=0),
+            call("data_dir/2_solar.csv", index_col=0),
             call("data_dir/synthetic_load_data.csv", index_col=0),
             call("data_dir/synthetic_market_price.csv", index_col=0),
         ]

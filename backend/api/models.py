@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -28,7 +28,7 @@ class DeviceCounts(BaseModel):
 
 
 class AddSourceRequest(BaseModel):
-    source_type: str  # 'solar' or 'wind'
+    source_type: Literal["solar"]  # the only supported source type (energy_sources.type CHECK)
     latitude: float
     longitude: float
     name: str | None = None

@@ -181,7 +181,7 @@ def kafka_consume_centralized():
 
 def _handle_device_reading(db_manager, message: dict) -> None:
     """Route a device_readings message to the correct hypertable."""
-    device_type = message.get("device_type")  # solar, wind, load
+    device_type = message.get("device_type")  # solar, load
     source_id = message.get("source_id")
     community_id = message.get("community_id")
     value = message.get("value", 0.0)
@@ -193,9 +193,9 @@ def _handle_device_reading(db_manager, message: dict) -> None:
         timestamp = timestamp[:-1] + "+00:00"
     time_obj = datetime.fromisoformat(timestamp)
 
-    if device_type in ("solar", "wind"):
+    if device_type == "solar":
         db_manager.execute(
-            f"INSERT INTO {device_type} (time, source_id, value, community_id) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO solar (time, source_id, value, community_id) VALUES (%s, %s, %s, %s)",
             (time_obj, source_id, value, community_id),
         )
     elif device_type == "load":
@@ -203,6 +203,8 @@ def _handle_device_reading(db_manager, message: dict) -> None:
             "INSERT INTO load (time, source_id, value, community_id) VALUES (%s, %s, %s, %s)",
             (time_obj, source_id, value, community_id),
         )
+    else:
+        print(f"[device] ignoring reading from unsupported device type {device_type!r} ({source_id})")
 
 
 if __name__ == "__main__":

@@ -21,7 +21,7 @@ class WeatherProvider:
 
         provider = WeatherProvider(50.85, 4.35)
         data = await provider.get_current()
-        # {"irradiance_w_m2": 450.0, "wind_speed_ms": 6.2, "temperature_c": 14.0}
+        # {"irradiance_w_m2": 450.0, "temperature_c": 14.0}
     """
 
     def __init__(self, latitude: float, longitude: float):
@@ -36,7 +36,6 @@ class WeatherProvider:
 
         Returns a dict with keys:
             irradiance_w_m2  – shortwave radiation (W/m²), 0 at night
-            wind_speed_ms    – wind speed at 100 m height (m/s)
             temperature_c    – air temperature at 2 m (°C)
         Falls back to zeros on any network error.
         """
@@ -48,7 +47,7 @@ class WeatherProvider:
 
         return self._cache.get(
             hour_key,
-            {"irradiance_w_m2": 0.0, "wind_speed_ms": 0.0, "temperature_c": 15.0},
+            {"irradiance_w_m2": 0.0, "temperature_c": 15.0},
         )
 
     async def _refresh(self) -> None:
@@ -60,7 +59,7 @@ class WeatherProvider:
                     params={
                         "latitude": self.latitude,
                         "longitude": self.longitude,
-                        "hourly": "shortwave_radiation,windspeed_10m,windspeed_100m,temperature_2m",
+                        "hourly": "shortwave_radiation,temperature_2m",
                         "forecast_days": 2,
                         "timezone": "UTC",
                     },
@@ -74,13 +73,11 @@ class WeatherProvider:
         hourly = data.get("hourly", {})
         times = hourly.get("time", [])
         irradiances = hourly.get("shortwave_radiation", [])
-        wind_100 = hourly.get("windspeed_100m") or hourly.get("windspeed_10m", [])
         temps = hourly.get("temperature_2m", [])
 
         for i, time_str in enumerate(times):
             self._cache[time_str] = {
                 "irradiance_w_m2": float(irradiances[i] or 0.0) if i < len(irradiances) else 0.0,
-                "wind_speed_ms": float(wind_100[i] or 0.0) if i < len(wind_100) else 0.0,
                 "temperature_c": float(temps[i] or 15.0) if i < len(temps) else 15.0,
             }
 

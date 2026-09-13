@@ -90,7 +90,7 @@ def generate_weather_data(
             "ghi": np.clip(solar_radiation, 0, 1000),  # Clip values to realistic range (0–1000 W/m²)
             "dni": np.clip(solar_radiation * 0.8, 0, 800),  # DNI as 80% of GHI
             "dhi": np.clip(solar_radiation * 0.2, 0, 200),  # DHI as 20% of GHI
-            # Wind speed at hub height (100m)
+            # Wind speed at 100 m (used by the PV cell-temperature model)
             ("wind_speed", 100): np.clip(wind_speed_pattern, 3, 12),  # Clip values to 3–12 m/s
             # Temperature at 2m above ground level
             ("temperature", 2): np.clip(temperature_pattern, -10, 15),  # Clip values to -10°C to 15°C
@@ -100,7 +100,7 @@ def generate_weather_data(
         index=time_index,
     )
 
-    # Ensure columns with MultiIndex for variables with height (required for windpowerlib)
+    # Columns are (variable, height) tuples; wind speed is kept for the PV cell-temperature model
     weather_data.columns = pd.MultiIndex.from_tuples([(col if isinstance(col, tuple) else (col, "")) for col in weather_data.columns])
 
     if output_path:

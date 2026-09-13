@@ -88,5 +88,5 @@ def test_reset_forecast_tables(schema_manager, recorded):
 def test_drop_forecasting_tables_targets_only_known_tables(schema_manager, mock_db_manager):
     schema_manager._drop_forecasting_tables_in_public()
     (query,), _ = mock_db_manager.execute.call_args
-    assert query == "DROP TABLE IF EXISTS solar_forecast, wind_forecast, load_forecast, market_forecast CASCADE;"
+    assert query == "DROP TABLE IF EXISTS solar_forecast, load_forecast, market_forecast CASCADE;"
     assert "LIKE" not in query.upper()

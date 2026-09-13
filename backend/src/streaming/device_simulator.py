@@ -1,7 +1,7 @@
 """Real-time device simulator: emits one reading per second per source.
 
 When the source has valid lat/lon coordinates (non-zero), the simulator uses
-real weather data from Open-Meteo to drive solar and wind generation.
+real weather data from Open-Meteo to drive solar generation.
 Market prices from ENTSO-E are attached to every message when available.
 Synthetic fallbacks are used whenever real data is unavailable.
 """
@@ -23,22 +23,6 @@ def _get_bootstrap_servers() -> str:
 # 18 % is a realistic value for modern monocrystalline panels
 _PV_EFFICIENCY = 0.18
 
-# Simple cubic wind power curve parameters
-# Cut-in: 3 m/s, rated: 12 m/s, cut-out: 25 m/s
-_WIND_CUT_IN = 3.0
-_WIND_RATED = 12.0
-_WIND_CUT_OUT = 25.0
-
-
-def _wind_power_factor(wind_speed_ms: float) -> float:
-    """Return a 0–1 capacity factor using a simplified cubic power curve."""
-    if wind_speed_ms < _WIND_CUT_IN or wind_speed_ms >= _WIND_CUT_OUT:
-        return 0.0
-    if wind_speed_ms >= _WIND_RATED:
-        return 1.0
-    return ((wind_speed_ms - _WIND_CUT_IN) / (_WIND_RATED - _WIND_CUT_IN)) ** 3
-
-
 class DeviceSimulator:
     """Simulates an IoT device (inverter, smart meter) emitting readings every second."""
 
@@ -54,7 +38,7 @@ class DeviceSimulator:
         capacity_kw: float = 10.0,
     ):
         self.source_id = source_id
-        self.source_type = source_type  # "solar", "wind", "load"
+        self.source_type = source_type  # "solar" or "load"; anything else emits 0
         self.community_id = community_id
         self.latitude = latitude
         self.longitude = longitude
@@ -118,15 +102,13 @@ class DeviceSimulator:
     async def _generate_reading(self) -> tuple[float, dict]:
         """Return (power_kw, extra_fields) for the current tick.
 
-        extra_fields may contain real-world context (irradiance, wind_speed,
+        extra_fields may contain real-world context (irradiance, temperature,
         market_price_eur_mwh) attached to the message for downstream consumers.
         """
         extra: dict = {}
 
         if self.source_type == "solar":
             value, extra = await self._solar()
-        elif self.source_type == "wind":
-            value, extra = await self._wind()
         elif self.source_type == "load":
             value = self._load()
         else:
@@ -170,27 +152,6 @@ class DeviceSimulator:
         factor = max(0.0, cos_val) ** 2
         noise = float(np.random.normal(0, 0.05))
         return max(0.0, self.capacity_kw * factor + noise), {"data_source": "synthetic"}
-
-    async def _wind(self) -> tuple[float, dict]:
-        """Wind generation in kW using a cubic power curve.
-
-        With real data: wind speed at 100 m from Open-Meteo → cubic power curve.
-        Synthetic fallback: slow sinusoid with noise.
-        """
-        if self._weather is not None:
-            weather = await self._weather.get_current()
-            wind_speed = weather["wind_speed_ms"]
-            # Add sub-hourly turbulence noise (σ ≈ 10 % of speed)
-            noisy_speed = max(0.0, wind_speed + float(np.random.normal(0, 0.1 * wind_speed)))
-            factor = _wind_power_factor(noisy_speed)
-            return self.capacity_kw * factor, {
-                "wind_speed_ms": wind_speed,
-                "data_source": "open-meteo",
-            }
-
-        # Synthetic
-        factor = max(0.0, math.sin(self.tick / 100) + float(np.random.normal(0, 0.3)))
-        return max(0.0, self.capacity_kw * min(1.0, factor)), {"data_source": "synthetic"}
 
     def _load(self) -> float:
         """Household load in kW — synthetic profile (no real-time load data API)."""

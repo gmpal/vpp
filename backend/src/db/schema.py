@@ -5,7 +5,7 @@ from .connection import DatabaseManager
 
 
 class SchemaManager:
-    FORECAST_TABLES = ("solar_forecast", "wind_forecast", "load_forecast", "market_forecast")
+    FORECAST_TABLES = ("solar_forecast", "load_forecast", "market_forecast")
 
     def __init__(self, db_manager):
         self.db = db_manager
@@ -38,10 +38,8 @@ class SchemaManager:
         # Hypertables don't support FK constraints — add bare UUID column
         for table in (
             "solar",
-            "wind",
             "load",
             "solar_forecast",
-            "wind_forecast",
             "load_forecast",
         ):
             try:

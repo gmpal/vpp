@@ -24,7 +24,6 @@ kafka-python==2.0.2
 
 # Data generation dependencies (needed for sources.py which imports generation.py)
 pvlib==0.10.3
-windpowerlib==0.2.1
 
 # HTTP client for async external API calls (weather proxy)
 httpx==0.27.0

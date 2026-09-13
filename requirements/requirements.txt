@@ -9,7 +9,6 @@ xgboost
 lightgbm
 joblib
 pvlib
-windpowerlib
 prophet
 kafka-python
 prometheus_client

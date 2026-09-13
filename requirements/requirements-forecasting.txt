@@ -21,7 +21,6 @@ statsmodels==0.14.1
 
 # Domain-Specific Libraries
 pvlib==0.10.3
-windpowerlib==0.2.1
 
 # Hyperparameter Optimization
 optuna==3.5.0

@@ -35,12 +35,11 @@ export interface ForecastedDataPoint {
 
 export interface DeviceCounts {
   solar: number;
-  wind: number;
 }
 
 export interface EnergySource {
   source_id: string;
-  source_type: "solar" | "wind";
+  source_type: "solar";
   latitude: number;
   longitude: number;
   name: string | null;
@@ -49,7 +48,7 @@ export interface EnergySource {
 }
 
 export interface AddSourceRequest {
-  source_type: "solar" | "wind";
+  source_type: "solar";
   latitude: number;
   longitude: number;
   name?: string;
