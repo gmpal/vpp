@@ -17,7 +17,6 @@ def ensure_core_tables():
         db = DatabaseManager()
         schema = SchemaManager(db)
         schema._migrate_relax_legacy_user_scoping()
-        db.close()
     except Exception:
         pass  # DB may not be available yet
 
@@ -37,7 +36,6 @@ async def resume_active_simulators():
             """,
             fetch=True,
         ) or []
-        db.close()
 
         for row in rows:
             source_id, source_type, community_id, lat, lon = row

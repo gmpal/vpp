@@ -1,23 +1,37 @@
 """
 Centralized configuration management using Pydantic Settings.
 All environment variables are validated and type-checked here.
+
+Settings are resolved lazily on first call to ``get_settings()`` so that
+importing the backend never requires a populated ``.env``. Every field has a
+local-development default; real deployments override them via environment
+variables. When ``ENVIRONMENT=testing`` the ``.env`` file is ignored so tests
+see only the variables they set themselves.
 """
 
-from typing import List
+import os
+from typing import List, Optional
 
-from pydantic import Field, validator
-from pydantic_settings import BaseSettings
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
     # Database Configuration
     timescaledb_host: str = Field(default="localhost", description="TimescaleDB host")
     postgres_port: int = Field(default=5432, description="PostgreSQL port")
-    postgres_db: str = Field(..., description="PostgreSQL database name")
-    postgres_user: str = Field(..., description="PostgreSQL username")
-    postgres_password: str = Field(..., description="PostgreSQL password")
+    postgres_db: str = Field(default="postgres", description="PostgreSQL database name")
+    postgres_user: str = Field(default="postgres", description="PostgreSQL username")
+    postgres_password: str = Field(default="postgres", description="PostgreSQL password")
 
     # Kafka Configuration
     kafka_bootstrap_servers: str = Field(default="kafka:29092", description="Kafka bootstrap servers")
@@ -31,20 +45,21 @@ class Settings(BaseSettings):
 
     # API Configuration
     backend_port: int = Field(default=8000, description="Backend API port")
-    frontend_port: int = Field(default=3000, description="Frontend port")
     cors_origins: List[str] = Field(default=["*"], description="CORS allowed origins")
 
     # Application Configuration
     log_level: str = Field(default="INFO", description="Logging level")
-    environment: str = Field(default="development", description="Environment (development/production)")
+    environment: str = Field(default="development", description="Environment (development/production/testing)")
 
-    @validator("postgres_port", "backend_port", "frontend_port")
+    @field_validator("postgres_port", "backend_port")
+    @classmethod
     def validate_port(cls, v):
         if not 1 <= v <= 65535:
             raise ValueError(f"Port must be between 1 and 65535, got {v}")
         return v
 
-    @validator("log_level")
+    @field_validator("log_level")
+    @classmethod
     def validate_log_level(cls, v):
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         v_upper = v.upper()
@@ -52,34 +67,13 @@ class Settings(BaseSettings):
             raise ValueError(f"Log level must be one of {valid_levels}, got {v}")
         return v_upper
 
-    @validator("environment")
+    @field_validator("environment")
+    @classmethod
     def validate_environment(cls, v):
         valid_envs = ["development", "production", "testing"]
         if v.lower() not in valid_envs:
             raise ValueError(f"Environment must be one of {valid_envs}, got {v}")
         return v.lower()
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-        extra = "ignore"
-        # Map environment variable names to field names
-        fields = {
-            "timescaledb_host": {"env": "TIMESCALEDB_HOST"},
-            "postgres_port": {"env": "POSTGRES_PORT"},
-            "postgres_db": {"env": "POSTGRES_DB"},
-            "postgres_user": {"env": "POSTGRES_USER"},
-            "postgres_password": {"env": "POSTGRES_PASSWORD"},
-            "kafka_bootstrap_servers": {"env": "KAFKA_BOOTSTRAP_SERVERS"},
-            "mlflow_tracking_uri": {"env": "MLFLOW_TRACKING_URI"},
-            "mlflow_backend_store_uri": {"env": "MLFLOW_BACKEND_STORE_URI"},
-            "mlflow_default_artifact_root": {"env": "MLFLOW_DEFAULT_ARTIFACT_ROOT"},
-            "backend_port": {"env": "BACKEND_PORT"},
-            "frontend_port": {"env": "FRONTEND_PORT"},
-            "log_level": {"env": "LOG_LEVEL"},
-            "environment": {"env": "ENVIRONMENT"},
-        }
 
     @property
     def database_url(self) -> str:
@@ -98,17 +92,19 @@ class Settings(BaseSettings):
         }
 
 
-# Singleton instance
-_settings: Settings = None
+_settings: Optional[Settings] = None
 
 
 def get_settings() -> Settings:
-    """Get or create settings singleton instance."""
+    """Get or create the settings singleton."""
     global _settings
     if _settings is None:
-        _settings = Settings()
+        testing = os.environ.get("ENVIRONMENT", "").lower() == "testing"
+        _settings = Settings(_env_file=None) if testing else Settings()
     return _settings
 
 
-# Export for convenience
-settings = get_settings()
+def reset_settings() -> None:
+    """Drop the cached settings so the next ``get_settings()`` re-reads the environment."""
+    global _settings
+    _settings = None

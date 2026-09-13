@@ -191,7 +191,6 @@ def load_pack(pack_name: str):
     print(f"    {len(entities['households'])} households")
     print(f"    {len(entities['sources'])} solar sources")
     print(f"    {len(entities['vehicles'])} electric vehicles")
-    db.close()
 
 
 def _load_readings(db: DatabaseManager, path: Path):

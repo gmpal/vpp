@@ -401,6 +401,51 @@ class CrudManager:
             "longitude": r[10],
         }
 
+    # --- Battery CRUD ---
+    _BATTERY_COLUMNS = "battery_id, household_id, name, capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta"
+
+    def create_battery(
+        self,
+        battery_id: str,
+        household_id: str,
+        name: str,
+        capacity_kwh: float,
+        soc_kwh: float,
+        max_charge_kw: float,
+        max_discharge_kw: float,
+        eta: float = 0.95,
+    ):
+        query = f"INSERT INTO batteries ({self._BATTERY_COLUMNS}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+        self.db.execute(query, (battery_id, household_id, name, capacity_kwh, soc_kwh, max_charge_kw, max_discharge_kw, eta))
+
+    def get_all_batteries(self) -> list:
+        query = f"SELECT {self._BATTERY_COLUMNS} FROM batteries ORDER BY battery_id"
+        rows = self.db.execute(query, fetch=True) or []
+        return [self._battery_row_to_dict(r) for r in rows]
+
+    def get_battery(self, battery_id: str) -> dict | None:
+        query = f"SELECT {self._BATTERY_COLUMNS} FROM batteries WHERE battery_id = %s"
+        rows = self.db.execute(query, (battery_id,), fetch=True) or []
+        return self._battery_row_to_dict(rows[0]) if rows else None
+
+    def update_battery_soc(self, battery_id: str, new_soc: float):
+        self.db.execute("UPDATE batteries SET soc_kwh = %s WHERE battery_id = %s", (new_soc, battery_id))
+
+    def delete_battery(self, battery_id: str):
+        self.db.execute("DELETE FROM batteries WHERE battery_id = %s", (battery_id,))
+
+    def _battery_row_to_dict(self, r) -> dict:
+        return {
+            "battery_id": r[0],
+            "household_id": r[1],
+            "name": r[2],
+            "capacity_kwh": r[3],
+            "soc_kwh": r[4],
+            "max_charge_kw": r[5],
+            "max_discharge_kw": r[6],
+            "eta": r[7],
+        }
+
     def get_community_summary(self) -> dict:
         """Returns aggregated production, consumption and EV state for the whole community."""
         # Latest solar production sum across registered sources

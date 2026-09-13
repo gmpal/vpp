@@ -1,4 +1,6 @@
 # db/connection.py
+from contextlib import closing
+
 import psycopg2
 
 from backend.src.config import get_settings
@@ -26,8 +28,7 @@ class DatabaseManager:
         return psycopg2.connect(**self.config)
 
     def execute(self, query: str, params=None, fetch: bool = False):
-        """Execute a query and optionally fetch results."""
-        with self.connect() as conn, conn.cursor() as cursor:
+        """Execute a query in its own connection, commit, and optionally fetch results."""
+        with closing(self.connect()) as conn, conn, conn.cursor() as cursor:
             cursor.execute(query, params)
-            conn.commit()
             return cursor.fetchall() if fetch and cursor.description else None

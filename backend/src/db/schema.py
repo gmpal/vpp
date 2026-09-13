@@ -5,43 +5,14 @@ from .connection import DatabaseManager
 
 
 class SchemaManager:
+    FORECAST_TABLES = ("solar_forecast", "wind_forecast", "load_forecast", "market_forecast")
+
     def __init__(self, db_manager):
         self.db = db_manager
 
-    def _drop_all_tables_in_public(self):
-        query = """
-        DO $$
-        DECLARE
-            tbl record;
-        BEGIN
-            FOR tbl IN
-                SELECT tablename
-                FROM pg_tables
-                WHERE schemaname = 'public'
-            LOOP
-                EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE;', tbl.tablename);
-            END LOOP;
-        END $$;
-        """
-        self.db.execute(query)
-
     def _drop_forecasting_tables_in_public(self):
-        query = """
-        DO $$
-        DECLARE
-            tbl record;
-        BEGIN
-            FOR tbl IN
-                SELECT tablename
-                FROM pg_tables
-                WHERE schemaname = 'public'
-                AND tablename ILIKE '%forecast%'
-            LOOP
-                EXECUTE format('DROP TABLE IF EXISTS public.%I CASCADE;', tbl.tablename);
-            END LOOP;
-        END $$;
-        """
-        self.db.execute(query)
+        """Drop only the known forecast tables, never user tables that merely contain 'forecast'."""
+        self.db.execute(f"DROP TABLE IF EXISTS {', '.join(self.FORECAST_TABLES)} CASCADE;")
 
     def _create_communities_table(self):
         query = """
@@ -355,4 +326,3 @@ if __name__ == "__main__":
     schema = SchemaManager(db)
     schema.reset_all_tables()
     print("All tables created successfully.")
-    db.close()
