@@ -2,9 +2,12 @@ import subprocess
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.src.db import CrudManager
+from backend.src.dependencies import get_crud_manager
+from backend.src.pipelines.generation import generate_synthetic_market_price
 from backend.src.utils.logger import get_logger
 
 router = APIRouter()
@@ -76,31 +79,24 @@ async def get_training_status():
 
 
 @router.post("/data/generate-system-data")
-async def generate_system_data():
-    """Generate load and market data and write directly to database"""
+def generate_system_data(crud: CrudManager = Depends(get_crud_manager)):
+    """Regenerate synthetic market prices and rebuild the aggregate load table.
+
+    Load is not generated here: it is the sum of household consumption, so the
+    ``load`` table is rebuilt from ``household_load`` instead of receiving synthetic
+    rows that the next household change would wipe. Market prices replace the
+    existing ones, so calling this twice does not duplicate data.
+    """
     try:
-        from backend.src.db import CrudManager, DatabaseManager
-        from backend.src.pipelines.generation import generate_synthetic_load_data, generate_synthetic_market_price
-
-        # Generate data
-        load_series = generate_synthetic_load_data(num_days=100, output_path=None, freq="h")
         market_series = generate_synthetic_market_price(num_days=100, output_path=None, freq="h")
-
-        # Write directly to database
-        db = DatabaseManager()
-        crud = CrudManager(db)
-
-        # Convert to format expected by save_to_db
-        load_count = 0
-        for timestamp, value in load_series.items():
-            crud.save_to_db("load", timestamp, None, value)
-            load_count += 1
-
-        market_count = 0
-        for timestamp, value in market_series.items():
-            crud.save_to_db("market", timestamp, None, value)
-            market_count += 1
-
-        return {"message": "System data generated and saved to database", "load_points": load_count, "market_points": market_count}
+        market_count = crud.save_series("market", market_series, replace=True)
+        crud.rebuild_aggregated_load()
+        load_count = crud.db.execute("SELECT COUNT(*) FROM load", fetch=True)[0][0]
+        return {
+            "message": "Market prices regenerated and load rebuilt from households",
+            "market_points": market_count,
+            "load_points": load_count,
+        }
     except Exception as e:
+        logger.error(f"Error generating system data: {e}")
         raise HTTPException(status_code=500, detail=str(e))

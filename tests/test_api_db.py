@@ -574,3 +574,65 @@ def test_household_load_starts_now_in_utc(client, db_manager, household_id):
     """Generated load must start at the current UTC time, not the server's local wall-clock time."""
     first = db_query(db_manager, "SELECT MIN(time) FROM household_load WHERE household_id = %s", (household_id,))[0][0]
     assert abs(pd.Timestamp(first) - pd.Timestamp.now(tz="UTC")) < pd.Timedelta(minutes=5)
+
+
+# ---------------------------------------------------------------------------
+# Latest-data semantics (realtime / historical top) and bulk writes
+# ---------------------------------------------------------------------------
+
+def _seed_solar_hours(crud_manager, n, source_id="pv1"):
+    times = pd.date_range("2024-01-01", periods=n, freq="h", tz="UTC")
+    crud_manager.save_series("solar", pd.Series(range(n), index=times, dtype=float), source_id=source_id)
+    return times
+
+
+def test_realtime_without_since_returns_the_latest_100_points(client, crud_manager, schema_manager, cleanup):
+    times = _seed_solar_hours(crud_manager, 150)
+
+    data = client.get("/api/realtime-data/solar", params={"source_id": "pv1"}).json()
+
+    assert len(data) == 100
+    assert pd.Timestamp(data[0]["timestamp"]) == times[50]
+    assert pd.Timestamp(data[-1]["timestamp"]) == times[-1]
+
+
+def test_realtime_since_returns_only_newer_points(client, crud_manager, schema_manager, cleanup):
+    times = _seed_solar_hours(crud_manager, 10)
+
+    data = client.get("/api/realtime-data/solar", params={"source_id": "pv1", "since": times[6].isoformat()}).json()
+
+    assert [pd.Timestamp(p["timestamp"]) for p in data] == list(times[7:])
+
+
+def test_historical_top_returns_latest_points_oldest_first(client, crud_manager, schema_manager, cleanup):
+    times = _seed_solar_hours(crud_manager, 60)
+
+    data = client.get("/api/historical/solar", params={"source_id": "pv1", "top": 5}).json()
+
+    assert [pd.Timestamp(p["timestamp"]) for p in data] == list(times[-5:])
+
+
+def test_generate_system_data_keeps_household_load_and_does_not_duplicate(
+    client, db_manager, schema_manager, cleanup
+):
+    client.post("/api/households", json=HOUSEHOLD_PAYLOAD)  # 720 hourly load rows
+    load_before = db_query(db_manager, "SELECT time, value FROM load ORDER BY time")
+
+    for _ in range(2):
+        response = client.post("/api/data/generate-system-data")
+        assert response.status_code == 200
+        assert response.json()["market_points"] == 2400
+        assert response.json()["load_points"] == 720
+
+    assert db_query(db_manager, "SELECT COUNT(*) FROM market")[0][0] == 2400
+    assert db_query(db_manager, "SELECT time, value FROM load ORDER BY time") == load_before
+
+
+def test_save_series_round_trips_in_bulk(crud_manager, db_manager, schema_manager, cleanup):
+    times = pd.date_range("2025-01-01", periods=5000, freq="h", tz="UTC")
+    written = crud_manager.save_series("market", pd.Series(0.25, index=times))
+
+    assert written == 5000
+    assert db_query(db_manager, "SELECT COUNT(*), MIN(time), MAX(time) FROM market")[0] == (
+        5000, times[0].to_pydatetime(), times[-1].to_pydatetime()
+    )

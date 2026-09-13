@@ -17,7 +17,8 @@ def query_realtime_data(
     crud: CrudManager = Depends(get_crud_manager),
 ):
     try:
-        data_list = crud.load_historical_data(source, source_id, start=since, end=None, top=100)
+        # Latest 100 points, or the next 100 strictly after the last point the client has.
+        data_list = crud.load_historical_data(source, source_id, after=since, top=100)
         return [DataPoint(timestamp=item["time"].isoformat(), value=item["value"]) for item in data_list]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,8 +1,9 @@
 # tests/test_db_crud.py
 import pytest
 import pandas as pd
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 from backend.src.db.crud import CrudManager
+from backend.src.exceptions import InvalidTableNameError
 from backend.src.db.connection import DatabaseManager
 
 
@@ -108,42 +109,104 @@ def test_load_historical_data_no_filter(crud_manager):
     assert df == []
 
 
-def test_save_forecast_with_source_id(crud_manager):
-    """Test saving forecast data with source_id."""
+@pytest.fixture
+def bulk_insert(crud_manager):
+    """Capture execute_values calls; the connection and cursor are mocks."""
+    conn = MagicMock()
+    cursor = conn.cursor.return_value.__enter__.return_value
+    conn.__enter__.return_value = conn
+    crud_manager.db.connect = Mock(return_value=conn)
+    with patch("backend.src.db.crud.execute_values") as execute_values:
+        yield execute_values, cursor, conn
+
+
+def test_save_forecast_with_source_id(crud_manager, bulk_insert):
+    """Forecasts are inserted in one batch."""
+    execute_values, cursor, conn = bulk_insert
     forecasted_df = pd.DataFrame(
         {"value": [42.0, 43.0]}, index=pd.to_datetime(["2023-01-01", "2023-01-02"])
     )
 
     crud_manager.save_forecast("solar", "source123", forecasted_df)
 
-    expected_query = (
-        "INSERT INTO solar_forecast (time, source_id, yhat) VALUES (%s, %s, %s)"
+    execute_values.assert_called_once_with(
+        cursor,
+        "INSERT INTO solar_forecast (time, source_id, yhat) VALUES %s",
+        [(pd.Timestamp("2023-01-01"), "source123", 42.0), (pd.Timestamp("2023-01-02"), "source123", 43.0)],
+        page_size=1000,
     )
-    expected_calls = [
-        ((expected_query, [pd.Timestamp("2023-01-01"), "source123", 42.0]), {}),
-        ((expected_query, [pd.Timestamp("2023-01-02"), "source123", 43.0]), {}),
-    ]
-    calls = [(call[0], call[1]) for call in crud_manager.db.execute.call_args_list]
-    assert crud_manager.db.execute.call_count == 2
-    assert calls == expected_calls
+    crud_manager.db.execute.assert_not_called()
+    conn.close.assert_called_once()
 
 
-def test_save_forecast_no_source_id(crud_manager):
-    """Test saving forecast data without source_id."""
+def test_save_forecast_no_source_id(crud_manager, bulk_insert):
+    execute_values, cursor, _ = bulk_insert
     forecasted_df = pd.DataFrame(
         {"value": [42.0, 43.0]}, index=pd.to_datetime(["2023-01-01", "2023-01-02"])
     )
 
     crud_manager.save_forecast("load", None, forecasted_df)
 
-    expected_query = "INSERT INTO load_forecast (time, yhat) VALUES (%s, %s)"
-    expected_calls = [
-        ((expected_query, [pd.Timestamp("2023-01-01"), 42.0]), {}),
-        ((expected_query, [pd.Timestamp("2023-01-02"), 43.0]), {}),
-    ]
-    calls = [(call[0], call[1]) for call in crud_manager.db.execute.call_args_list]
-    assert crud_manager.db.execute.call_count == 2
-    assert calls == expected_calls
+    execute_values.assert_called_once_with(
+        cursor,
+        "INSERT INTO load_forecast (time, yhat) VALUES %s",
+        [(pd.Timestamp("2023-01-01"), 42.0), (pd.Timestamp("2023-01-02"), 43.0)],
+        page_size=1000,
+    )
+
+
+def test_save_series_batches_non_renewable_rows(crud_manager, bulk_insert):
+    execute_values, cursor, conn = bulk_insert
+    series = pd.Series([0.1, 0.2], index=pd.to_datetime(["2023-01-01", "2023-01-02"], utc=True))
+
+    assert crud_manager.save_series("market", series) == 2
+
+    cursor.execute.assert_not_called()
+    execute_values.assert_called_once_with(
+        cursor,
+        "INSERT INTO market (time, value) VALUES %s",
+        [(series.index[0], 0.1), (series.index[1], 0.2)],
+        page_size=1000,
+    )
+    conn.close.assert_called_once()
+
+
+def test_save_series_replace_deletes_in_the_same_transaction(crud_manager, bulk_insert):
+    execute_values, cursor, _ = bulk_insert
+    series = pd.Series([5.0], index=pd.to_datetime(["2023-01-01"], utc=True))
+
+    crud_manager.save_series("solar", series, source_id="pv1", replace=True)
+
+    cursor.execute.assert_called_once_with("DELETE FROM solar WHERE source_id = %s", ("pv1",))
+    execute_values.assert_called_once_with(
+        cursor, "INSERT INTO solar (time, source_id, value) VALUES %s", [(series.index[0], "pv1", 5.0)], page_size=1000
+    )
+
+
+def test_save_series_requires_source_id_for_renewables(crud_manager):
+    with pytest.raises(ValueError, match="source_id is required"):
+        crud_manager.save_series("solar", pd.Series(dtype=float))
+
+
+def test_save_series_rejects_unknown_table(crud_manager):
+    with pytest.raises(InvalidTableNameError):
+        crud_manager.save_series("users", pd.Series(dtype=float))
+
+
+def test_load_historical_data_top_without_start_keeps_latest(crud_manager):
+    crud_manager.db.execute.return_value = []
+    crud_manager.load_historical_data("market", top=50)
+
+    expected_query = "SELECT time, value FROM (SELECT time, value FROM market  ORDER BY time DESC LIMIT 50) latest ORDER BY time"
+    crud_manager.db.execute.assert_called_once_with(expected_query, [], fetch=True)
+
+
+def test_load_historical_data_after_is_exclusive_and_pages_forward(crud_manager):
+    crud_manager.db.execute.return_value = []
+    crud_manager.load_historical_data("solar", "pv1", after="2023-01-01T00:00:00", top=100)
+
+    expected_query = "SELECT time, value FROM solar WHERE source_id = %s AND time > %s ORDER BY time LIMIT 100"
+    crud_manager.db.execute.assert_called_once_with(expected_query, ["pv1", "2023-01-01T00:00:00"], fetch=True)
 
 
 def test_load_forecasted_data_renewable(crud_manager):

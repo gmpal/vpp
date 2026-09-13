@@ -27,9 +27,7 @@ def init_db(schema_manager: SchemaManager = Depends(get_schema_manager)):
         existing_market = db.execute("SELECT COUNT(*) FROM market", fetch=True)
         if not existing_market or existing_market[0][0] == 0:
             market_series = generate_synthetic_market_price(num_days=100, output_path=None, freq="h")
-            for timestamp, value in market_series.items():
-                crud.save_to_db("market", timestamp, None, value)
-                market_count += 1
+            market_count = crud.save_series("market", market_series)
 
         return {
             "message": "Database initialized successfully",
@@ -51,10 +49,7 @@ def reset_db(schema_manager: SchemaManager = Depends(get_schema_manager)):
         crud = CrudManager(db)
 
         market_series = generate_synthetic_market_price(num_days=100, output_path=None, freq="h")
-        market_count = 0
-        for timestamp, value in market_series.items():
-            crud.save_to_db("market", timestamp, None, value)
-            market_count += 1
+        market_count = crud.save_series("market", market_series)
 
         return {
             "message": "Database reset successfully",
@@ -87,9 +82,7 @@ def init_db_stream(schema_manager: SchemaManager = Depends(get_schema_manager)):
             existing_market = db.execute("SELECT COUNT(*) FROM market", fetch=True)
             if not existing_market or existing_market[0][0] == 0:
                 market_series = generate_synthetic_market_price(num_days=100, output_path=None, freq="h")
-                for timestamp, value in market_series.items():
-                    crud.save_to_db("market", timestamp, None, value)
-                    market_count += 1
+                market_count = crud.save_series("market", market_series)
             yield _event("Seeding market data", "done", count=market_count)
 
             yield _event("complete", "done")

@@ -1,7 +1,9 @@
 # db/crud.py
+from contextlib import closing
 from datetime import datetime
 
 import pandas as pd
+from psycopg2.extras import execute_values
 
 from backend.src.exceptions import InvalidTableNameError
 
@@ -34,6 +36,35 @@ class CrudManager:
         """
         if table not in self.VALID_TABLES:
             raise InvalidTableNameError(f"Invalid table name: {table}. Must be one of {self.VALID_TABLES}")
+
+    def _bulk_insert(self, sql: str, rows: list[tuple], delete_sql: str | None = None, delete_params=None) -> None:
+        """Insert rows with one connection and one transaction (optionally deleting first)."""
+        with closing(self.db.connect()) as conn, conn, conn.cursor() as cursor:
+            if delete_sql:
+                cursor.execute(delete_sql, delete_params)
+            if rows:
+                execute_values(cursor, sql, rows, page_size=1000)
+
+    def save_series(self, table: str, series: pd.Series, source_id: str | None = None, replace: bool = False) -> int:
+        """Bulk-insert a time series into a history table; returns the number of rows written.
+
+        With ``replace`` the table's existing rows (for ``source_id`` on renewables) are
+        deleted in the same transaction, so regenerating data does not duplicate it.
+        """
+        self._validate_table_name(table)
+        renewable = table in self.db.renewables
+        if renewable and not source_id:
+            raise ValueError(f"source_id is required for {table}")
+        if renewable:
+            sql = f"INSERT INTO {table} (time, source_id, value) VALUES %s"
+            rows = [(ts, source_id, float(v)) for ts, v in series.items()]
+            delete = (f"DELETE FROM {table} WHERE source_id = %s", (source_id,))
+        else:
+            sql = f"INSERT INTO {table} (time, value) VALUES %s"
+            rows = [(ts, float(v)) for ts, v in series.items()]
+            delete = (f"DELETE FROM {table}", None)
+        self._bulk_insert(sql, rows, *(delete if replace else (None, None)))
+        return len(rows)
 
     def save_to_db(self, table: str, timestamp: datetime, source_id: str | None, value: float):
         self._validate_table_name(table)
@@ -68,11 +99,8 @@ class CrudManager:
 
     def save_household_load(self, household_id: str, load_series: pd.Series):
         """Bulk-insert a load time series into household_load."""
-        query = "INSERT INTO household_load (time, household_id, value) VALUES (%s, %s, %s)"
         rows = [(ts, household_id, float(v)) for ts, v in load_series.items()]
-        with self.db.connect() as conn, conn.cursor() as cursor:
-            cursor.executemany(query, rows)
-            conn.commit()
+        self._bulk_insert("INSERT INTO household_load (time, household_id, value) VALUES %s", rows)
 
     def rebuild_aggregated_load(self):
         """Rebuild the load table as a time-bucketed aggregate of all household_load records.
@@ -93,7 +121,15 @@ class CrudManager:
         start: str = None,
         end: str = None,
         top: int = None,
+        after: str = None,
     ):
+        """Time-ordered points from a history table.
+
+        ``start``/``end`` are inclusive, ``after`` is exclusive (for polling new points).
+        ``top`` limits the result: without a lower bound it keeps the most recent points,
+        with ``start`` or ``after`` it keeps the first points from that bound. Rows are
+        always returned oldest first.
+        """
         self._validate_table_name(table)
         params = []
         where_clauses = []
@@ -103,13 +139,18 @@ class CrudManager:
         if start:
             where_clauses.append("time >= %s")
             params.append(start)
+        if after:
+            where_clauses.append("time > %s")
+            params.append(after)
         if end:
             where_clauses.append("time <= %s")
             params.append(end)
         where = " AND ".join(where_clauses) if where_clauses else ""
         query = f"SELECT time, value FROM {table} {'WHERE ' + where if where else ''} ORDER BY time"
-        if top:
-            query += f" LIMIT {top}"
+        if top and not (start or after):
+            query = f"SELECT time, value FROM ({query} DESC LIMIT {int(top)}) latest ORDER BY time"
+        elif top:
+            query += f" LIMIT {int(top)}"
         rows = self.db.execute(query, params, fetch=True) or []
 
         # This format is perfect for FastAPI to automatically convert to JSON.
@@ -122,10 +163,12 @@ class CrudManager:
         table_name = f"{table}_forecast"
         self._validate_table_name(table_name)
         columns = ["time"] + (["source_id"] if source_id else []) + ["yhat"]
-        query = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(['%s'] * len(columns))})"
-        for time, row in forecasted_df.iterrows():
-            values = [time] + ([source_id] if source_id else []) + [float(row["value"])]  # Convert to float
-            self.db.execute(query, values)
+        query = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES %s"
+        rows = [
+            (time, *([source_id] if source_id else []), float(value))
+            for time, value in forecasted_df["value"].items()
+        ]
+        self._bulk_insert(query, rows)
 
     def load_forecasted_data(
         self,
