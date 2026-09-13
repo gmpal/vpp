@@ -185,6 +185,26 @@ def test_delete_nonexistent_source_returns_404(client, schema_manager):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/device-status
+# ---------------------------------------------------------------------------
+
+def test_device_status_counts_distinct_solar_sources(client, crud_manager, schema_manager, cleanup):
+    crud_manager.save_to_db("solar", pd.Timestamp("2024-01-01 00:00", tz="UTC"), "solar_a", 10.0)
+    crud_manager.save_to_db("solar", pd.Timestamp("2024-01-01 01:00", tz="UTC"), "solar_a", 11.0)
+    crud_manager.save_to_db("solar", pd.Timestamp("2024-01-01 00:00", tz="UTC"), "solar_b", 12.0)
+
+    response = client.get("/api/device-status")
+    assert response.status_code == 200
+    assert response.json() == {"solar": 2}
+
+
+def test_device_status_with_no_sources(client, schema_manager, cleanup):
+    response = client.get("/api/device-status")
+    assert response.status_code == 200
+    assert response.json() == {"solar": 0}
+
+
+# ---------------------------------------------------------------------------
 # Households  (POST / GET / DELETE + load profile generation)
 # ---------------------------------------------------------------------------
 

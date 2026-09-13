@@ -58,6 +58,4 @@ def query_historical_data(
 def query_device_counts(
     crud: CrudManager = Depends(get_crud_manager),
 ):
-    solar = len(crud.query_source_ids("solar"))
-    wind = len(crud.query_source_ids("wind"))
-    return DeviceCounts(solar=solar, wind=wind)
+    return DeviceCounts(solar=len(crud.query_source_ids("solar")))
