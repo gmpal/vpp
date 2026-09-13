@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
 
+from backend.src.config import get_settings
 from backend.src.db import CrudManager, DatabaseManager, SchemaManager
 from backend.src.forecasting.models import (
     RandomForestTimeSeriesModel,
@@ -21,6 +22,8 @@ warnings.filterwarnings(
 )
 
 logger = get_logger(__name__)
+
+mlflow.set_tracking_uri(get_settings().mlflow_tracking_uri)
 
 db_manager = DatabaseManager()
 crud_manager = CrudManager(db_manager)

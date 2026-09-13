@@ -6,6 +6,7 @@ import mlflow
 import pandas as pd
 from mlflow.tracking import MlflowClient
 
+from backend.src.config import get_settings
 from backend.src.db import CrudManager, DatabaseManager, SchemaManager
 from backend.src.utils.data_utils import get_datasets_list
 from backend.src.utils.logger import get_logger
@@ -17,7 +18,7 @@ warnings.filterwarnings(
 
 logger = get_logger(__name__)
 
-mlflow.set_tracking_uri("http://mlflow:5000")
+mlflow.set_tracking_uri(get_settings().mlflow_tracking_uri)
 logger.info(f"MLflow tracking URI set to: {mlflow.get_tracking_uri()}")
 
 client = MlflowClient()
